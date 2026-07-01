@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NewAPI 配置生成器 (简洁版)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --primary: #6366f1;
+      --primary-glow: rgba(99,102,241,0.3);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --success: #10b981;
+      --danger: #ef4444;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 40px 20px;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; }
+
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 4px;
+    }
+    .sub {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 28px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--primary);
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .col-span-2 { grid-column: 1 / -1; }
+
+    label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    input, select, textarea {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px var(--primary-glow);
+    }
+    textarea {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.82rem;
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    .builtin-hint {
+      font-size: 0.8rem;
+      color: var(--success);
+      margin-top: 4px;
+    }
+    .custom-hint {
+      font-size: 0.8rem;
+      color: #f59e0b;
+      margin-top: 4px;
+    }
+
+    .item {
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .item-remove {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: none;
+      border: none;
+      color: var(--danger);
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .item-remove:hover { background: rgba(239,68,68,0.15); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      transition: all 0.15s;
+    }
+    .btn:hover { background: rgba(255,255,255,0.1); }
+    .btn.primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .btn.primary:hover { filter: brightness(1.1); }
+    .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+    .row-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-left: 6px;
+    }
+    .tag-builtin { background: rgba(16,185,129,0.15); color: var(--success); }
+    .tag-custom { background: rgba(245,158,11,0.15); color: #f59e0b; }
+
+    .sep { border: none; border-top: 1px solid var(--border); margin: 4px 0 12px; }
+
+    .provider-item { display: none; }
+
+    #providerSection { display: none; }
+
+    /* Built-in reference table */
+    .ref-toggle {
+      background: none;
+      border: none;
+      color: var(--primary);
+      cursor: pointer;
+      font-size: 0.82rem;
+      padding: 0;
+      font-weight: 600;
+    }
+    .ref-toggle:hover { text-decoration: underline; }
+    .ref-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      margin-top: 12px;
+    }
+    .ref-table th {
+      text-align: left;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .ref-table td {
+      padding: 8px;
+      border-bottom: 1px solid rgba(51,65,85,0.4);
+      vertical-align: middle;
+    }
+    .ref-table tr:last-child td { border-bottom: none; }
+    .ref-table code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78rem;
+      background: rgba(0,0,0,0.3);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .waf-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    .waf-yes { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .waf-no { background: rgba(16,185,129,0.15); color: #34d399; }
+    .ref-hidden { display: none; }
+
+    .ok {
+      display: block;
+      color: var(--success);
+      background: rgba(16,185,129,0.1);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      margin-top: 10px;
+      border: 1px solid rgba(16,185,129,0.2);
+    }
+    .err {
+      display: block;
+      color: var(--danger);
+      background: rgba(239,68,68,0.1);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      margin-top: 10px;
+      white-space: pre-wrap;
+      border: 1px solid rgba(239,68,68,0.2);
+    }
+
+    @media (max-width: 600px) {
+      .grid { grid-template-columns: 1fr; }
+      body { padding: 20px 12px; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🍥 NewAPI 配置生成器</h1>
+  <p class="sub">适用 aceHubert/newapi-ai-check-in · 只填必要字段 · 本地运行不上传</p>
+
+  <!-- 账号列表 -->
+  <div class="card">
+    <div class="card-title">账号列表</div>
+    <div id="accountList"></div>
+    <button class="btn btn-sm" id="addBtn">+ 添加账号</button>
+  </div>
+
+  <!-- 内置站点参考 -->
+  <div class="card">
+    <div class="card-title">
+      内置站点参考
+      <button class="ref-toggle" id="refToggle">展开查看 ↓</button>
+    </div>
+    <div id="refContent" class="ref-hidden">
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;">输入这些站点的 URL 时，会自动匹配内置 provider，无需额外配置 PROVIDERS。</p>
+      <table class="ref-table">
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>站点 URL</th>
+            <th>签到接口</th>
+            <th>WAF</th>
+            <th>OAuth 登录</th>
+          </tr>
+        </thead>
+        <tbody id="refBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card" id="providerSection">
+    <div class="card-title">自定义站点 · 需要额外配置 PROVIDERS</div>
+    <div id="providerList"></div>
+    <p style="font-size:0.82rem;color:var(--text-muted);">这些站点不在内置列表中，配置 ACCOUNTS 时也需要把下方的 PROVIDERS JSON 一起添加到 GitHub Secrets。</p>
+  </div>
+
+  <!-- 生成 -->
+    <div class="card">
+    <div class="card-title">生成结果</div>
+    <div class="row-actions">
+      <button class="btn primary" id="genBtn">⚡ 生成 JSON</button>
+    </div>
+
+    <div style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <label style="display:inline;color:var(--text);font-weight:600;font-size:0.82rem">ACCOUNTS</label>
+        <button class="btn btn-sm" id="copyAccountsBtn">📋 复制 ACCOUNTS</button>
+      </div>
+      <textarea id="outputAccounts" readonly style="min-height:80px;font-size:0.82rem" placeholder="点击「生成 JSON」…"></textarea>
+    </div>
+
+    <div style="margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <label style="display:inline;color:var(--text);font-weight:600;font-size:0.82rem">
+          PROVIDERS
+          <span style="font-weight:400;color:var(--text-muted);font-size:0.75rem">（自定义站点才需要）</span>
+        </label>
+        <button class="btn btn-sm" id="copyProvidersBtn">📋 复制 PROVIDERS</button>
+      </div>
+      <textarea id="outputProviders" readonly style="min-height:60px;font-size:0.82rem" placeholder="无需 PROVIDERS（仅内置站点）"></textarea>
+    </div>
+
+    <div style="margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <label style="display:inline;color:var(--text);font-weight:600;font-size:0.82rem">
+          ACCOUNTS_LINUX_DO
+          <span style="font-weight:400;color:var(--text-muted);font-size:0.75rem">（有勾选 OAuth 时才需要）</span>
+        </label>
+        <button class="btn btn-sm" id="copyLinuxdoBtn">📋 复制</button>
+      </div>
+      <textarea id="outputLinuxdo" readonly style="min-height:40px;font-size:0.82rem" placeholder="无需 OAuth 时留空"></textarea>
+    </div>
+
+    <div style="margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <label style="display:inline;color:var(--text);font-weight:600;font-size:0.82rem">
+          ACCOUNTS_GITHUB
+          <span style="font-weight:400;color:var(--text-muted);font-size:0.75rem">（有勾选 OAuth 时才需要）</span>
+        </label>
+        <button class="btn btn-sm" id="copyGithubBtn">📋 复制</button>
+      </div>
+      <textarea id="outputGithub" readonly style="min-height:40px;font-size:0.82rem" placeholder="无需 OAuth 时留空"></textarea>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <!-- OAuth 账号池 -->
+  <div class="card">
+    <div class="card-title">OAuth 账号池</div>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;">
+      填入 GitHub / Linux.do 的账号密码，供勾选了 OAuth 的站点使用。这些将作为独立 secret 添加。
+    </p>
+    <div style="margin-bottom:16px">
+      <div style="font-weight:600;font-size:0.82rem;color:#f59e0b;margin-bottom:6px">ACCOUNTS_LINUX_DO</div>
+      <div id="linuxdoPool"></div>
+      <button class="btn btn-sm" id="addLinuxdoBtn">+ 添加 Linux.do 账号</button>
+    </div>
+    <div>
+      <div style="font-weight:600;font-size:0.82rem;color:#6366f1;margin-bottom:6px">ACCOUNTS_GITHUB</div>
+      <div id="githubPool"></div>
+      <button class="btn btn-sm" id="addGithubBtn">+ 添加 GitHub 账号</button>
+    </div>
+  </div>
+
+  <!-- PROVIDERS 提取器 -->
+  <div class="card">
+    <div class="card-title">反向提取 · 从 ACCOUNTS 生成 PROVIDERS</div>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;">
+      粘贴你已有的 ACCOUNTS JSON，自动识别自定义站点并生成对应的 PROVIDERS。
+    </p>
+    <textarea id="accountsInput" style="min-height:120px;font-size:0.82rem" placeholder="粘贴 ACCOUNTS JSON 数组，例如 [{ ... }]"></textarea>
+    <div style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;line-height:1.5">
+      格式必须是 <code>[&#123; "provider": "...", "api_user": "...", ... &#125;]</code><br>
+      支持带 <code>&#123;"ACCOUNTS": [...]&#125;</code> 包装的对象。<br>
+      内置 provider: anyrouter, wong, huan666, x666, kfc, elysiver, hotaru, free.lyclaude.site, muyuan, takeapi, duckcoding
+    </div>
+    <div class="row-actions">
+      <button class="btn primary" id="extractBtn">🔍 提取 PROVIDERS</button>
+    </div>
+    <div id="extractProvidersSection" style="display:none;margin-top:12px">
+      <p id="extractHint" style="display:none;font-size:0.82rem;color:#f59e0b;margin-bottom:8px;">
+        以下自定义站点需要填写站点 URL 才能生成 PROVIDERS：
+      </p>
+      <div id="extractCustomList"></div>
+      <div class="row-actions">
+        <button class="btn primary" id="extractGenBtn">⚡ 生成 PROVIDERS</button>
+        <button class="btn" id="extractCopyBtn">📋 复制</button>
+      </div>
+      <textarea id="extractOutput" readonly style="margin-top:12px;min-height:80px"></textarea>
+      <div id="extractStatus"></div>
+    </div>
+  </div>
+
+  <p style="font-size:0.78rem;color:var(--text-muted);margin-top:16px;text-align:center;">
+    配置步骤: 复制上方 JSON → GitHub 仓库 → Settings → Environments → production → Add secret
+  </p>
+</div>
+
+<script>
+const BUILTIN = {
+  "anyrouter":  { origin: "https://anyrouter.top",  checkin: "/api/user/sign_in", waf: true,  oauth: "GitHub / LinuxDo" },
+  "wong":       { origin: "https://wzw.pp.ua",      checkin: "/api/user/checkin",  waf: false, oauth: "LinuxDo" },
+  "huan666":    { origin: "https://ai.huan666.de",  checkin: "/api/user/checkin",  waf: false, oauth: "LinuxDo" },
+  "x666":       { origin: "https://x666.me",        checkin: "—（CDK 充值）",      waf: false, oauth: "LinuxDo" },
+  "kfc":        { origin: "https://kfc-api.sxxe.net", checkin: "/api/user/checkin", waf: false, oauth: "GitHub / LinuxDo" },
+  "elysiver":   { origin: "https://elysiver.h-e.top", checkin: "/api/user/checkin", waf: true,  oauth: "GitHub / LinuxDo" },
+  "hotaru":              { origin: "https://hotaruapi.com",         checkin: "/api/user/checkin",  waf: true,  oauth: "LinuxDo" },
+  "free_lyclaude_site":  { origin: "https://free.lyclaude.site",    checkin: "/api/user/checkin",  waf: false, oauth: "GitHub / LinuxDo" },
+  "muyuan":     { origin: "https://muyuan.do",      checkin: "/api/user/checkin",  waf: true,  oauth: "GitHub" },
+  "takeapi":    { origin: "https://codex.661118.xyz", checkin: "/api/user/checkin", waf: false, oauth: "GitHub / LinuxDo" },
+  "duckcoding": { origin: "https://duckcoding.ai",  checkin: "/api/user/checkin",  waf: false, oauth: "GitHub / LinuxDo" },
+};
+
+function matchBuiltin(url) {
+  const u = url.replace(/\/+$/, "");
+  for (const [name, cfg] of Object.entries(BUILTIN)) {
+    if (cfg.origin.replace(/\/+$/, "") === u) return name;
+  }
+  return null;
+}
+
+function providerKey(url) {
+  try { return new URL(url).hostname.replace(/\./g, "_"); } catch { return "custom"; }
+}
+
+// === Templates ===
+function createAccountItem(data) {
+  const d = document.createElement("div");
+  d.className = "item";
+  d.innerHTML = `
+    <button class="item-remove" data-action="remove">✕ 删除</button>
+    <div class="grid">
+      <div>
+        <label>账号备注</label>
+        <input class="f-name" value="${escapeHtml(data?.name || "")}">
+      </div>
+      <div>
+        <label>站点 URL</label>
+        <input class="f-url" value="${escapeHtml(data?.url || "")}" placeholder="https://example.com">
+      </div>
+      <div>
+        <label>认证方式</label>
+        <select class="f-auth">
+          <option value="cookie" ${data?.auth === "token" ? "" : "selected"}>Session Cookie</option>
+          <option value="token" ${data?.auth === "token" ? "selected" : ""}>System Access Token</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl-secret">Session Cookie</label>
+        <input class="f-secret" value="${escapeHtml(data?.secret || "")}">
+      </div>
+      <div class="col-span-2" style="display:grid;grid-template-columns:1fr 120px;gap:12px">
+        <div>
+          <label>用户 ID (api_user)</label>
+          <input class="f-uid" value="${escapeHtml(data?.uid || "")}" placeholder="F12 → Local Storage → user.id">
+        </div>
+        <div>
+          <label>Provider</label>
+          <input class="f-provider" readonly style="background:rgba(0,0,0,0.4);font-size:0.82rem">
+        </div>
+      </div>
+      <div class="col-span-2">
+        <div class="f-hint" style="font-size:0.8rem"></div>
+      </div>
+    </div>
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;gap:16px;align-items:center">
+      <label style="font-size:0.78rem;color:var(--text-muted);font-weight:600">OAuth 登录（可选）</label>
+      <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem">
+        <input type="checkbox" class="f-linuxdo" ${data?.linuxdo ? "checked" : ""}>
+        <span style="color:#f59e0b">Linux.do</span>
+      </label>
+      <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:0.82rem">
+        <input type="checkbox" class="f-github" ${data?.github ? "checked" : ""}>
+        <span style="color:#6366f1">GitHub</span>
+      </label>
+    </div>
+  `;
+  d.querySelector('[data-action="remove"]').onclick = () => { d.remove(); rebuild(); };
+
+  // 实时更新 hint 和 provider
+  const urlInput = d.querySelector(".f-url");
+  const hint = d.querySelector(".f-hint");
+  const provInput = d.querySelector(".f-provider");
+  const authSelect = d.querySelector(".f-auth");
+  const lblSecret = d.querySelector(".lbl-secret");
+
+  function update() {
+    const url = urlInput.value.trim();
+    const matched = matchBuiltin(url);
+    const pk = providerKey(url);
+
+    if (!url) {
+      hint.textContent = "";
+      provInput.value = "";
+      return;
+    }
+    if (matched) {
+      hint.innerHTML = `<span class="tag tag-builtin">内置 ${matched}</span> 自动匹配，无需 PROVIDERS`;
+      provInput.value = matched;
+    } else if (url.startsWith("http")) {
+      hint.innerHTML = `<span class="tag tag-custom">自定义</span> provider: <b>${pk}</b>，需要添加 PROVIDERS`;
+      provInput.value = pk;
+    } else {
+      hint.textContent = "";
+      provInput.value = "";
+    }
+  }
+
+  authSelect.onchange = () => {
+    lblSecret.textContent = authSelect.value === "token" ? "System Access Token" : "Session Cookie";
+  };
+
+  urlInput.oninput = update;
+  update();
+  return d;
+}
+
+function escapeHtml(s) {
+  if (!s) return "";
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+const list = document.getElementById("accountList");
+const providerSection = document.getElementById("providerSection");
+const providerList = document.getElementById("providerList");
+const outputAccounts = document.getElementById("outputAccounts");
+const outputProviders = document.getElementById("outputProviders");
+const outputLinuxdo = document.getElementById("outputLinuxdo");
+const outputGithub = document.getElementById("outputGithub");
+const status = document.getElementById("status");
+
+const linuxdoPool = document.getElementById("linuxdoPool");
+const githubPool = document.getElementById("githubPool");
+
+function createOauthItem(kind) {
+  const d = document.createElement("div");
+  d.className = "item";
+  d.style.padding = "10px 14px";
+  d.innerHTML = `
+    <button class="item-remove" data-action="remove" style="position:absolute;top:10px;right:12px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.78rem">✕ 删除</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div style="flex:1">
+        <label>用户名</label>
+        <input class="f-ouser" placeholder="用户名" style="background:#0f172a;border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:0.85rem;width:100%">
+      </div>
+      <div style="flex:1">
+        <label>密码</label>
+        <input class="f-opass" type="password" placeholder="密码" style="background:#0f172a;border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:0.85rem;width:100%">
+      </div>
+    </div>
+  `;
+  d.querySelector('[data-action="remove"]').onclick = () => d.remove();
+  return d;
+}
+
+document.getElementById("addLinuxdoBtn").onclick = () => linuxdoPool.appendChild(createOauthItem("linuxdo"));
+document.getElementById("addGithubBtn").onclick = () => githubPool.appendChild(createOauthItem("github"));
+
+// 渲染内置站点参考表
+const refBody = document.getElementById("refBody");
+for (const [name, cfg] of Object.entries(BUILTIN)) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td><b>${name}</b></td>
+    <td><code>${cfg.origin}</code></td>
+    <td><code>${cfg.checkin}</code></td>
+    <td><span class="waf-badge ${cfg.waf ? 'waf-yes' : 'waf-no'}">${cfg.waf ? '⚠️ 有' : '✓ 无'}</span></td>
+    <td style="font-size:0.78rem">${cfg.oauth}</td>`;
+  refBody.appendChild(tr);
+}
+
+document.getElementById("refToggle").onclick = () => {
+  const c = document.getElementById("refContent");
+  const t = document.getElementById("refToggle");
+  const open = c.classList.toggle("ref-hidden");
+  t.textContent = open ? "展开查看 ↓" : "收起 ↑";
+};
+
+document.getElementById("addBtn").onclick = () => {
+  list.appendChild(createAccountItem());
+  rebuild();
+};
+
+// 默认给一个
+list.appendChild(createAccountItem());
+
+function rebuild() {
+  const customProviders = {};
+  const items = list.querySelectorAll(".item");
+
+  items.forEach(item => {
+    const url = item.querySelector(".f-url").value.trim();
+    if (!url || !url.startsWith("http")) return;
+    if (matchBuiltin(url)) return;
+
+    const pk = providerKey(url);
+    if (!customProviders[pk]) {
+      customProviders[pk] = {
+        origin: url.replace(/\/+$/, ""),
+        check_in_path: "/api/user/checkin",
+        user_info_path: "/api/user/self",
+        api_user_key: "new-api-user",
+      };
+    }
+  });
+
+  // Render provider section
+  const keys = Object.keys(customProviders);
+  providerSection.style.display = keys.length ? "block" : "none";
+  providerList.innerHTML = "";
+  for (const [name, cfg] of Object.entries(customProviders)) {
+    const d = document.createElement("div");
+    d.className = "item";
+    d.style.padding = "10px 14px";
+    d.innerHTML = `<strong>${escapeHtml(name)}</strong> → ${escapeHtml(cfg.origin)}
+      <span class="tag tag-custom">自定义</span>`;
+    providerList.appendChild(d);
+  }
+}
+
+document.getElementById("genBtn").onclick = () => {
+  status.innerHTML = "";
+  outputAccounts.value = "";
+  outputProviders.value = "";
+  outputLinuxdo.value = "";
+  outputGithub.value = "";
+  rebuild();
+
+  const items = list.querySelectorAll(".item");
+  const accounts = [];
+  const errors = [];
+
+  items.forEach((item, i) => {
+    const name = item.querySelector(".f-name").value.trim();
+    const url = item.querySelector(".f-url").value.trim();
+    const auth = item.querySelector(".f-auth").value;
+    const secret = item.querySelector(".f-secret").value.trim();
+    const uid = item.querySelector(".f-uid").value.trim();
+    const provider = item.querySelector(".f-provider").value.trim();
+
+    const errs = [];
+    if (!url) errs.push("站点 URL 必填");
+    if (!secret) errs.push("认证凭据必填");
+    if (!uid) errs.push("用户 ID 必填");
+    if (!provider) errs.push("无法识别站点");
+
+    if (errs.length) {
+      errors.push(`账号 ${i+1}「${name||'未命名'}」: ${errs.join("、")}`);
+      return;
+    }
+
+    const acct = { name: name || `账号${i+1}`, provider, api_user: uid };
+    if (auth === "token") {
+      acct.system_access_token = secret;
+    } else {
+      acct.cookies = { session: secret };
+    }
+    if (item.querySelector(".f-linuxdo").checked) acct["linux.do"] = true;
+    if (item.querySelector(".f-github").checked) acct["github"] = true;
+    accounts.push(acct);
+  });
+
+  if (errors.length) {
+    status.innerHTML = `<div class="err">${errors.join("\n")}</div>`;
+    return;
+  }
+  if (!accounts.length) {
+    status.innerHTML = `<div class="err">请至少添加一个有效的账号</div>`;
+    return;
+  }
+
+  // Build output
+  const customProviders = {};
+  items.forEach(item => {
+    const url = item.querySelector(".f-url").value.trim();
+    if (!url || !url.startsWith("http")) return;
+    if (matchBuiltin(url)) return;
+    const pk = providerKey(url);
+    if (!customProviders[pk]) {
+      customProviders[pk] = {
+        origin: url.replace(/\/+$/, ""),
+        check_in_path: "/api/user/checkin",
+        user_info_path: "/api/user/self",
+        api_user_key: "new-api-user",
+      };
+    }
+  });
+
+  // Build OAuth pool
+  const poolAccounts = (container) => {
+    const items = container.querySelectorAll(".item");
+    const result = [];
+    items.forEach(item => {
+      const user = item.querySelector(".f-ouser").value.trim();
+      const pass = item.querySelector(".f-opass").value.trim();
+      if (user && pass) result.push({ username: user, password: pass });
+    });
+    return result;
+  };
+
+  outputAccounts.value = JSON.stringify(accounts, null, 2);
+  if (Object.keys(customProviders).length) {
+    outputProviders.value = JSON.stringify(customProviders, null, 2);
+  }
+
+  const ld = poolAccounts(linuxdoPool);
+  const gh = poolAccounts(githubPool);
+  outputLinuxdo.value = ld.length ? JSON.stringify(ld, null, 2) : "";
+  outputGithub.value = gh.length ? JSON.stringify(gh, null, 2) : "";
+
+  let msg = `✅ 生成完成，共 ${accounts.length} 个账号`;
+  if (Object.keys(customProviders).length) msg += `，${Object.keys(customProviders).length} 个自定义站点`;
+  if (ld.length) msg += `，${ld.length} 个 Linux.do 账号`;
+  if (gh.length) msg += `，${gh.length} 个 GitHub 账号`;
+  msg += ` — 有内容的 secret 都需要添加到 GitHub`;
+  status.innerHTML = `<div class="ok">${msg}</div>`;
+};
+
+// === PROVIDERS 提取器 ===
+const accountsInput = document.getElementById("accountsInput");
+const extractBtn = document.getElementById("extractBtn");
+const extractSection = document.getElementById("extractProvidersSection");
+const extractCustomList = document.getElementById("extractCustomList");
+const extractHint = document.getElementById("extractHint");
+const extractGenBtn = document.getElementById("extractGenBtn");
+const extractCopyBtn = document.getElementById("extractCopyBtn");
+const extractOutput = document.getElementById("extractOutput");
+const extractStatus = document.getElementById("extractStatus");
+
+let _customProviders = {}; // cached after parsing
+
+extractBtn.onclick = () => {
+  extractStatus.innerHTML = "";
+  extractOutput.value = "";
+  extractSection.style.display = "none";
+  extractGenBtn.style.display = "";
+  extractCopyBtn.style.display = "";
+  _customProviders = {};
+
+  const raw = accountsInput.value.trim();
+  if (!raw) {
+    extractSection.style.display = "block";
+    extractHint.style.display = "none";
+    extractCustomList.innerHTML = "";
+    extractGenBtn.style.display = "none";
+    extractCopyBtn.style.display = "none";
+    extractStatus.innerHTML = `<div class="err">请先粘贴 ACCOUNTS JSON</div>`;
+    return;
+  }
+
+  let accounts;
+  try {
+    accounts = JSON.parse(raw);
+    if (!Array.isArray(accounts)) throw new Error("不是数组");
+  } catch {
+    // Try { "accounts": [...] } wrapper
+    try {
+      const wrapped = JSON.parse(raw);
+      if (wrapped.ACCOUNTS && Array.isArray(wrapped.ACCOUNTS)) {
+        accounts = wrapped.ACCOUNTS;
+      } else if (wrapped.accounts && Array.isArray(wrapped.accounts)) {
+        accounts = wrapped.accounts;
+      } else {
+        throw new Error("无法识别");
+      }
+    } catch {
+      extractSection.style.display = "block";
+      extractHint.style.display = "none";
+      extractCustomList.innerHTML = "";
+      extractGenBtn.style.display = "none";
+      extractCopyBtn.style.display = "none";
+      extractStatus.innerHTML = `<div class="err">JSON 解析失败，请确认粘贴的是有效的 JSON 数组。<br>格式: <code>[&#123;"provider":"...","api_user":"...",...&#125;]</code></div>`;
+      return;
+    }
+  }
+
+  // Find unique custom providers
+  const providerSet = {};
+  accounts.forEach(a => {
+    const p = a.provider;
+    if (!p) return;
+    if (BUILTIN[p]) return; // builtin, skip
+    providerSet[p] = (providerSet[p] || 0) + 1;
+  });
+
+  const customKeys = Object.keys(providerSet);
+  if (!customKeys.length) {
+    extractSection.style.display = "block";
+    extractHint.style.display = "none";
+    extractStatus.innerHTML = `<div class="ok">所有 provider 均为内置站点，无需 PROVIDERS</div>`;
+    extractCustomList.innerHTML = "<p style='color:var(--text-muted);font-size:0.88rem;padding:8px'>全部是内置站点，没有自定义 provider。</p>";
+    extractOutput.value = "";
+    extractGenBtn.style.display = "none";
+    extractCopyBtn.style.display = "none";
+    return;
+  }
+
+  extractHint.style.display = "block";
+  extractGenBtn.style.display = "";
+  extractCopyBtn.style.display = "";
+
+  // Show input fields for each custom provider
+  _customProviders = {};
+  extractCustomList.innerHTML = "";
+  customKeys.forEach(key => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.style.padding = "12px 14px";
+    div.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">
+        provider: <code>${escapeHtml(key)}</code>
+        <span class="tag tag-custom">自定义</span>
+        <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">（${providerSet[key]} 个账号）</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="flex:1">
+          <label>站点 URL</label>
+          <input class="extract-origin" placeholder="https://example.com" value="">
+        </div>
+      </div>
+    `;
+    extractCustomList.appendChild(div);
+  });
+
+  extractSection.style.display = "block";
+  extractStatus.innerHTML = `<div class="ok">找到 ${customKeys.length} 个自定义 provider，请填写站点 URL</div>`;
+};
+
+extractGenBtn.onclick = () => {
+  extractStatus.innerHTML = "";
+  const inputs = extractCustomList.querySelectorAll(".item");
+  const providers = {};
+  let hasEmpty = false;
+
+  inputs.forEach(item => {
+    const codeEl = item.querySelector("code");
+    const key = codeEl.textContent.trim();
+    const origin = item.querySelector(".extract-origin").value.trim();
+
+    if (!origin || !origin.startsWith("http")) {
+      hasEmpty = true;
+      item.style.borderColor = "#ef4444";
+    } else {
+      item.style.borderColor = "";
+      providers[key] = {
+        origin: origin.replace(/\/+$/, ""),
+        check_in_path: "/api/user/checkin",
+        user_info_path: "/api/user/self",
+        api_user_key: "new-api-user",
+      };
+    }
+  });
+
+  if (hasEmpty) {
+    extractStatus.innerHTML = `<div class="err">请为所有自定义站点填写有效的 URL（以 http 开头）</div>`;
+    return;
+  }
+
+  if (!Object.keys(providers).length) {
+    extractStatus.innerHTML = `<div class="err">没有自定义站点需要生成</div>`;
+    return;
+  }
+
+  _customProviders = providers;
+  extractOutput.value = JSON.stringify(providers, null, 2);
+  extractStatus.innerHTML = `<div class="ok">✅ PROVIDERS 生成完成，共 ${Object.keys(providers).length} 个自定义站点</div>`;
+};
+
+extractCopyBtn.onclick = async () => {
+  const text = extractOutput.value.trim();
+  if (!text) { extractStatus.innerHTML = `<div class="err">请先生成 PROVIDERS</div>`; return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    extractStatus.innerHTML = `<div class="ok">✅ 已复制到剪贴板</div>`;
+  } catch {
+    extractOutput.select();
+    extractStatus.innerHTML = `<div class="ok">无法自动复制，请手动 Ctrl+C</div>`;
+  }
+};
+
+document.getElementById("copyAccountsBtn").onclick = async () => {
+  const text = outputAccounts.value.trim();
+  if (!text) { status.innerHTML = `<div class="err">请先生成 JSON</div>`; return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    status.innerHTML = `<div class="ok">✅ ACCOUNTS 已复制到剪贴板</div>`;
+  } catch {
+    outputAccounts.select();
+    status.innerHTML = `<div class="ok">无法自动复制，请手动 Ctrl+C</div>`;
+  }
+};
+
+document.getElementById("copyProvidersBtn").onclick = async () => {
+  const text = outputProviders.value.trim();
+  if (!text) { status.innerHTML = `<div class="err">暂无 PROVIDERS 需要复制</div>`; return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    status.innerHTML = `<div class="ok">✅ PROVIDERS 已复制到剪贴板</div>`;
+  } catch {
+    outputProviders.select();
+    status.innerHTML = `<div class="ok">无法自动复制，请手动 Ctrl+C</div>`;
+  }
+};
+
+document.getElementById("copyLinuxdoBtn").onclick = async () => {
+  const text = outputLinuxdo.value.trim();
+  if (!text) { status.innerHTML = `<div class="err">暂无 Linux.do 账号需要复制</div>`; return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    status.innerHTML = `<div class="ok">✅ ACCOUNTS_LINUX_DO 已复制</div>`;
+  } catch {
+    outputLinuxdo.select();
+    status.innerHTML = `<div class="ok">无法自动复制，请手动 Ctrl+C</div>`;
+  }
+};
+
+document.getElementById("copyGithubBtn").onclick = async () => {
+  const text = outputGithub.value.trim();
+  if (!text) { status.innerHTML = `<div class="err">暂无 GitHub 账号需要复制</div>`; return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    status.innerHTML = `<div class="ok">✅ ACCOUNTS_GITHUB 已复制</div>`;
+  } catch {
+    outputGithub.select();
+    status.innerHTML = `<div class="ok">无法自动复制，请手动 Ctrl+C</div>`;
+  }
+};
+</script>
+</body>
+</html>
