@@ -40,7 +40,7 @@ class ProviderConfig:
     origin: str
     login_path: str = "/login"
     status_path: str = "/api/status"
-    auth_state_path: str = "api/oauth/state"
+    auth_state_path: str = "/api/oauth/state"
     check_in_path: str | Callable[[str, str | int], str] | None = None
     check_in_status: bool | CheckInStatusFunc = False  # 签到状态查询：True=标准检查，False=不检查，Callable=自定义函数
     user_info_path: str = "/api/user/self"
@@ -76,7 +76,7 @@ class ProviderConfig:
             origin=data["origin"],
             login_path=data.get("login_path", "/login"),
             status_path=data.get("status_path", "/api/status"),
-            auth_state_path=data.get("auth_state_path", "api/oauth/state"),
+            auth_state_path=data.get("auth_state_path", "/api/oauth/state"),
             check_in_path=data.get("check_in_path"),
             check_in_status=data.get("check_in_status", False),
             user_info_path=data.get("user_info_path", "/api/user/self"),
@@ -760,6 +760,25 @@ class AppConfig:
             #     aliyun_captcha=False,
             #     bypass_method="cf_clearance",
             # ),
+            "free_lyclaude_site": ProviderConfig(
+                name="free_lyclaude_site",
+                origin="https://free.lyclaude.site",
+                login_path="/login",
+                status_path="/api/status",
+                auth_state_path="/api/oauth/state",
+                check_in_path="/api/user/checkin",
+                check_in_status=True,
+                user_info_path="/api/user/self",
+                topup_path="/api/user/topup",
+                get_cdk=None,
+                api_user_key="new-api-user",
+                github_client_id=None,
+                github_auth_path="/api/oauth/github",
+                linuxdo_client_id=None,
+                linuxdo_auth_path="/api/oauth/linuxdo",
+                aliyun_captcha=False,
+                bypass_method=None,
+            ),
             "takeapi": ProviderConfig(
                 name="takeapi",
                 origin="https://codex.661118.xyz",
