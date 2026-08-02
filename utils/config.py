@@ -372,8 +372,21 @@ class AppConfig:
         linux_do_accounts_env: str = "ACCOUNTS_LINUX_DO",
         github_accounts_env: str = "ACCOUNTS_GITHUB",
         proxy_env: str = "PROXY",
+        accounts_file: str = "accounts.json",
+        app_config_env: str = "APP_CONFIG",
     ) -> "AppConfig":
         """从环境变量加载配置
+
+        两种配置方式（推荐用统一变量 APP_CONFIG）:
+
+        1. 统一变量 APP_CONFIG（推荐，GitHub Actions 只需维护 1 个 Secret）:
+           {"ACCOUNTS": [...], "ACCOUNTS_LINUX_DO": [...], "ACCOUNTS_GITHUB": [...],
+            "PROVIDERS": {...}, "PROXY": "..."}
+           设置后优先使用，忽略各独立环境变量和 accounts.json。
+
+        2. 兼容模式（独立环境变量 + 本地 accounts.json 合并）:
+           ACCOUNTS / PROVIDERS / ACCOUNTS_LINUX_DO / ACCOUNTS_GITHUB 各管各的，
+           本地 accounts.json 若存在则自动合并（同名账号/账号池以文件为准，其余追加）。
 
         Args:
             providers_env: 自定义 providers 配置的环境变量名称，默认为 "PROVIDERS"
@@ -381,16 +394,63 @@ class AppConfig:
             linux_do_accounts_env: Linux.do 账号配置的环境变量名称，默认为 "ACCOUNTS_LINUX_DO"
             github_accounts_env: GitHub 账号配置的环境变量名称，默认为 "ACCOUNTS_GITHUB"
             proxy_env: 全局代理配置的环境变量名称，默认为 "PROXY"
+            accounts_file: 本地配置文件路径，默认为 "accounts.json"
+            app_config_env: 统一配置变量名称，默认为 "APP_CONFIG"
         """
-        # 加载 providers 配置
+        # 优先使用统一配置变量 APP_CONFIG（一个变量包含全部配置）
+        unified_str = os.getenv(app_config_env)
+        if unified_str:
+            return cls._load_from_unified(
+                unified_str,
+                app_config_env,
+                providers_env,
+                accounts_env,
+                linux_do_accounts_env,
+                github_accounts_env,
+                proxy_env,
+                accounts_file,
+            )
+
+        return cls._load_legacy(
+            providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file
+        )
+
+    @classmethod
+    def _load_legacy(
+        cls,
+        providers_env: str,
+        accounts_env: str,
+        linux_do_accounts_env: str,
+        github_accounts_env: str,
+        proxy_env: str,
+        accounts_file: str,
+    ) -> "AppConfig":
+        """兼容模式：独立环境变量 + 本地 accounts.json 合并加载"""
         providers = cls._load_providers(providers_env)
 
         # 加载全局 OAuth 账号配置
         linux_do_accounts = cls._load_oauth_accounts(linux_do_accounts_env, "Linux.do")
         github_accounts = cls._load_oauth_accounts(github_accounts_env, "GitHub")
 
+        # 加载本地配置文件（可选），合并到配置中
+        local_data = cls._load_local_config_file(accounts_file)
+        if local_data:
+            providers = cls._merge_providers(providers, local_data.get("PROVIDERS"), accounts_file)
+            linux_do_accounts = cls._merge_oauth_pool(
+                linux_do_accounts, local_data.get("ACCOUNTS_LINUX_DO"), accounts_file
+            )
+            github_accounts = cls._merge_oauth_pool(
+                github_accounts, local_data.get("ACCOUNTS_GITHUB"), accounts_file
+            )
+
         # 加载账号配置（传入全局 OAuth 账号用于解析 bool 类型配置）
         accounts = cls._load_accounts(accounts_env, linux_do_accounts, github_accounts)
+
+        # 合并本地配置文件中的账号（同名账号以文件为准）
+        if local_data and isinstance(local_data.get("ACCOUNTS"), list):
+            accounts = cls._merge_accounts(
+                accounts, local_data["ACCOUNTS"], linux_do_accounts, github_accounts
+            )
 
         # 自动为自定义 provider 添加账号（如果 accounts 中没有对应的 provider）
         accounts = cls._auto_add_accounts_for_custom_providers(providers, accounts, linux_do_accounts, github_accounts)
@@ -405,6 +465,128 @@ class AppConfig:
             github_accounts=github_accounts,
             global_proxy=global_proxy,
         )
+
+    @classmethod
+    def _load_from_unified(
+        cls,
+        unified_str: str,
+        app_config_env: str,
+        providers_env: str,
+        accounts_env: str,
+        linux_do_accounts_env: str,
+        github_accounts_env: str,
+        proxy_env: str,
+        accounts_file: str = "accounts.json",
+    ) -> "AppConfig":
+        """从统一配置变量（APP_CONFIG）加载配置
+
+        统一变量包含全部配置键，格式:
+        {
+            "ACCOUNTS": [...],
+            "ACCOUNTS_LINUX_DO": [...],
+            "ACCOUNTS_GITHUB": [...],
+            "PROVIDERS": {...},
+            "PROXY": "..."  # 可选
+        }
+
+        Args:
+            unified_str: 统一配置变量的原始 JSON 字符串
+            app_config_env: 统一配置变量名称（用于日志输出）
+            providers_env: 独立 providers 环境变量名称（解析失败时回退用）
+            accounts_env: 独立账号环境变量名称（解析失败时回退用）
+            linux_do_accounts_env: 独立 Linux.do 环境变量名称（解析失败时回退用）
+            github_accounts_env: 独立 GitHub 环境变量名称（解析失败时回退用）
+            proxy_env: 独立代理环境变量名称（解析失败时回退用）
+
+        Returns:
+            应用配置（统一变量解析失败时回退到兼容模式）
+        """
+        try:
+            data = json.loads(unified_str)
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Failed to parse {app_config_env}: {e}, falling back to legacy configuration")
+            return cls._load_legacy(
+                providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file
+            )
+
+        if not isinstance(data, dict):
+            print(f"⚠️ {app_config_env} must be a JSON object, falling back to legacy configuration")
+            return cls._load_legacy(
+                providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file
+            )
+
+        providers = cls._build_default_providers()
+        providers = cls._merge_providers(providers, data.get("PROVIDERS"), app_config_env)
+
+        linux_do_accounts = cls._parse_oauth_pool_value(data.get("ACCOUNTS_LINUX_DO"), "Linux.do", app_config_env)
+        github_accounts = cls._parse_oauth_pool_value(data.get("ACCOUNTS_GITHUB"), "GitHub", app_config_env)
+
+        accounts = cls._parse_accounts_data(
+            data.get("ACCOUNTS") or [], linux_do_accounts, github_accounts, source=app_config_env
+        )
+        accounts = cls._auto_add_accounts_for_custom_providers(providers, accounts, linux_do_accounts, github_accounts)
+
+        global_proxy = cls._parse_proxy_value(data.get("PROXY"), app_config_env)
+
+        print(f"⚙️ Loaded unified config from {app_config_env} environment variable")
+        return cls(
+            providers=providers,
+            accounts=accounts,
+            linux_do_accounts=linux_do_accounts,
+            github_accounts=github_accounts,
+            global_proxy=global_proxy,
+        )
+
+    @classmethod
+    def _parse_oauth_pool_value(
+        cls,
+        value,
+        label: str,
+        source: str,
+    ) -> List["OAuthAccountConfig"]:
+        """解析 OAuth 账号池数据（统一配置变量中的账号池）
+
+        Args:
+            value: 账号池原始数据（应为 list）
+            label: 提供商名称（用于日志输出）
+            source: 数据来源描述（用于日志输出）
+
+        Returns:
+            OAuth 账号配置列表
+        """
+        accounts = []
+        if not isinstance(value, list):
+            return accounts
+        for i, item in enumerate(value):
+            if not isinstance(item, dict) or not item.get("username") or not item.get("password"):
+                print(f"⚠️ {source} {label} account {i + 1} must contain username and password, skipping")
+                continue
+            accounts.append(OAuthAccountConfig.from_dict(item))
+        if accounts:
+            print(f"⚙️ Loaded {len(accounts)} {label} account(s) from {source}")
+        return accounts
+
+    @classmethod
+    def _parse_proxy_value(cls, value, source: str) -> Dict | None:
+        """解析代理配置值（统一配置变量中的 PROXY）
+
+        Args:
+            value: 代理配置值（str 或 dict）
+            source: 数据来源描述（用于日志输出）
+
+        Returns:
+            代理配置字典，未配置返回 None
+        """
+        if not value:
+            return None
+        if isinstance(value, str):
+            print(f"⚙️ Global proxy loaded from {source} (string format)")
+            return {"server": value}
+        if isinstance(value, dict):
+            print(f"⚙️ Global proxy loaded from {source} (dict format)")
+            return value
+        print(f"⚠️ {source} PROXY must be a string or object, ignoring")
+        return None
 
     @classmethod
     def _auto_add_accounts_for_custom_providers(
@@ -505,14 +687,45 @@ class AppConfig:
             return proxy
 
     @classmethod
-    def _load_providers(cls, providers_env: str) -> Dict[str, ProviderConfig]:
-        """从环境变量加载 providers 配置
+    def _parse_providers_data(
+        cls,
+        providers: Dict[str, ProviderConfig],
+        providers_data: dict,
+        source: str,
+    ) -> Dict[str, ProviderConfig]:
+        """解析自定义 providers 数据并合并到 providers 字典中
+
+        数据会覆盖同名 provider（包括内置 provider）
 
         Args:
-            providers_env: 环境变量名称
+            providers: 现有 providers 字典（会被修改）
+            providers_data: 自定义 providers 配置数据（dict）
+            source: 数据来源描述（用于日志输出，如环境变量名或文件名）
 
         Returns:
-            providers 配置字典
+            合并后的 providers 字典
+        """
+        if not isinstance(providers_data, dict):
+            print(f"⚠️ {source} must be a JSON object, ignoring custom providers")
+            return providers
+
+        # 解析自定义 providers,会覆盖默认配置
+        for name, provider_data in providers_data.items():
+            try:
+                providers[name] = ProviderConfig.from_dict(name, provider_data, is_customize=True)
+            except Exception as e:
+                print(f'⚠️ Failed to parse provider "{name}" from {source}: {e}, skipping')
+                continue
+
+        print(f"ℹ️ Loaded {len(providers_data)} custom provider(s) from {source}")
+        return providers
+
+    @classmethod
+    def _build_default_providers(cls) -> Dict[str, ProviderConfig]:
+        """构建内置 providers 配置
+
+        Returns:
+            内置 providers 配置字典
         """
         providers = {
             "anyrouter": ProviderConfig(
@@ -857,26 +1070,27 @@ class AppConfig:
             ),
         }
 
+        return providers
+
+    @classmethod
+    def _load_providers(cls, providers_env: str) -> Dict[str, ProviderConfig]:
+        """从环境变量加载 providers 配置（内置 + 环境变量 PROVIDERS）
+
+        Args:
+            providers_env: 环境变量名称
+
+        Returns:
+            providers 配置字典
+        """
+        providers = cls._build_default_providers()
+
         # 尝试从环境变量加载自定义 providers
         providers_str = os.getenv(providers_env)
 
         if providers_str:
             try:
                 providers_data = json.loads(providers_str)
-
-                if not isinstance(providers_data, dict):
-                    print(f"⚠️ {providers_env} must be a JSON object, ignoring custom providers")
-                    return providers
-
-                # 解析自定义 providers,会覆盖默认配置
-                for name, provider_data in providers_data.items():
-                    try:
-                        providers[name] = ProviderConfig.from_dict(name, provider_data, is_customize=True)
-                    except Exception as e:
-                        print(f'⚠️ Failed to parse provider "{name}": {e}, skipping')
-                        continue
-
-                print(f"ℹ️ Loaded {len(providers_data)} custom provider(s) from {providers_env} environment variable")
+                return cls._parse_providers_data(providers, providers_data, providers_env)
             except json.JSONDecodeError as e:
                 print(f"⚠️ Failed to parse {providers_env} environment variable: {e}, using default configuration only")
             except Exception as e:
@@ -1036,116 +1250,265 @@ class AppConfig:
 
         try:
             accounts_data = json.loads(accounts_str)
-
-            # 检查是否为数组格式
-            if not isinstance(accounts_data, list):
-                print("❌ Account configuration must use array format [{}]")
-                return []
-
-            accounts = []
-            # 验证账号数据格式
-            for i, account in enumerate(accounts_data):
-                if not isinstance(account, dict):
-                    print(f"⚠️ Account {i + 1} configuration format is incorrect, skipping")
-                    continue
-
-                # 如果有 name 字段,确保它不是空字符串
-                if "name" in account and not account["name"]:
-                    print(f"⚠️ Account {i + 1} name field cannot be empty, skipping")
-                    continue
-
-                account_name = account.get("name") or f"Account {i + 1}"
-
-                # 检查配置键是否存在
-                has_linux_do = "linux.do" in account
-                has_github = "github" in account
-                has_site = "site" in account
-                has_system_access_token = "system_access_token" in account
-                has_cookies = "cookies" in account
-
-                # 解析 linux.do 配置（支持 bool、单个账号、多个账号）
-                linux_do_accounts = None
-                if has_linux_do:
-                    linux_do_accounts = cls._parse_oauth_config(
-                        account["linux.do"],
-                        global_linux_do_accounts,
-                        "linux.do",
-                        i,
-                    )
-                    if linux_do_accounts is None:
-                        print(f"⚠️ {account_name} linux.do configuration is invalid, skipping")
-                        continue
-
-                # 解析 github 配置（支持 bool、单个账号、多个账号）
-                github_accounts = None
-                if has_github:
-                    github_accounts = cls._parse_oauth_config(
-                        account["github"],
-                        global_github_accounts,
-                        "github",
-                        i,
-                    )
-                    if github_accounts is None:
-                        print(f"⚠️ {account_name} github configuration is invalid, skipping")
-                        continue
-
-                site_accounts = None
-                if has_site:
-                    site_accounts = cls._parse_site_config(account["site"], i)
-                    if site_accounts is None:
-                        print(f"⚠️ {account_name} site configuration is invalid, skipping")
-                        continue
-
-                # 验证 system_access_token 配置
-                valid_system_access_token = False
-                if has_system_access_token:
-                    system_access_token_value = account.get("system_access_token")
-                    api_user = account.get("api_user")
-
-                    if system_access_token_value and api_user:
-                        valid_system_access_token = True
-                    elif system_access_token_value and not api_user:
-                        print(f"⚠️ {account_name} with system_access_token must have api_user field")
-                    elif not system_access_token_value:
-                        print(f"⚠️ {account_name} system_access_token is empty")
-
-                # 验证 cookies 配置
-                valid_cookies = False
-                if has_cookies:
-                    cookies_config = account.get("cookies")
-                    api_user = account.get("api_user")
-
-                    if cookies_config and api_user:
-                        valid_cookies = True
-                    elif cookies_config and not api_user:
-                        print(f"⚠️ {account_name} with cookies must have api_user field")
-                    elif not cookies_config:
-                        print(f"⚠️ {account_name} cookies is empty")
-
-                # 检查解析后是否至少有一个有效的认证方式
-                has_valid_linux_do = linux_do_accounts is not None and len(linux_do_accounts) > 0
-                has_valid_github = github_accounts is not None and len(github_accounts) > 0
-                has_valid_site = site_accounts is not None and len(site_accounts) > 0
-
-                if not has_valid_linux_do and not has_valid_github and not has_valid_site and not valid_system_access_token and not valid_cookies:
-                    print(
-                        f"⚠️ {account_name} must have at least one valid authentication method (site, linux.do, github, system_access_token, or cookies), skipping"
-                    )
-                    continue
-
-                # 创建 AccountConfig，传入解析后的账号列表
-                account_config = AccountConfig.from_dict(
-                    account, linux_do_accounts, github_accounts, site_accounts
-                )
-                accounts.append(account_config)
-
-            return accounts
+            return cls._parse_accounts_data(accounts_data, global_linux_do_accounts, global_github_accounts, source=accounts_env)
         except json.JSONDecodeError as e:
             print(f"❌ Account configuration JSON format is incorrect: {e}")
             return []
         except Exception as e:
             print(f"❌ Account configuration format is incorrect: {e}")
             return []
+
+    @classmethod
+    def _parse_accounts_data(
+        cls,
+        accounts_data,
+        global_linux_do_accounts: List["OAuthAccountConfig"],
+        global_github_accounts: List["OAuthAccountConfig"],
+        source: str,
+    ) -> List["AccountConfig"]:
+        """解析账号配置数据（环境变量或本地文件共用）
+
+        Args:
+            accounts_data: 账号配置数据（应为 list，每个元素是 dict）
+            global_linux_do_accounts: 全局 Linux.do 账号列表
+            global_github_accounts: 全局 GitHub 账号列表
+            source: 数据来源描述（用于日志输出，如环境变量名或文件名）
+
+        Returns:
+            账号配置列表，如果加载失败则返回空列表
+        """
+        # 检查是否为数组格式
+        if not isinstance(accounts_data, list):
+            print(f"❌ Account configuration in {source} must use array format [{{}}]")
+            return []
+
+        accounts = []
+        # 验证账号数据格式
+        for i, account in enumerate(accounts_data):
+            if not isinstance(account, dict):
+                print(f"⚠️ Account {i + 1} configuration format is incorrect, skipping")
+                continue
+
+            # 如果有 name 字段,确保它不是空字符串
+            if "name" in account and not account["name"]:
+                print(f"⚠️ Account {i + 1} name field cannot be empty, skipping")
+                continue
+
+            account_name = account.get("name") or f"Account {i + 1}"
+
+            # 检查配置键是否存在
+            has_linux_do = "linux.do" in account
+            has_github = "github" in account
+            has_site = "site" in account
+            has_system_access_token = "system_access_token" in account
+            has_cookies = "cookies" in account
+
+            # 解析 linux.do 配置（支持 bool、单个账号、多个账号）
+            linux_do_accounts = None
+            if has_linux_do:
+                linux_do_accounts = cls._parse_oauth_config(
+                    account["linux.do"],
+                    global_linux_do_accounts,
+                    "linux.do",
+                    i,
+                )
+                if linux_do_accounts is None:
+                    print(f"⚠️ {account_name} linux.do configuration is invalid, skipping")
+                    continue
+
+            # 解析 github 配置（支持 bool、单个账号、多个账号）
+            github_accounts = None
+            if has_github:
+                github_accounts = cls._parse_oauth_config(
+                    account["github"],
+                    global_github_accounts,
+                    "github",
+                    i,
+                )
+                if github_accounts is None:
+                    print(f"⚠️ {account_name} github configuration is invalid, skipping")
+                    continue
+
+            site_accounts = None
+            if has_site:
+                site_accounts = cls._parse_site_config(account["site"], i)
+                if site_accounts is None:
+                    print(f"⚠️ {account_name} site configuration is invalid, skipping")
+                    continue
+
+            # 验证 system_access_token 配置
+            valid_system_access_token = False
+            if has_system_access_token:
+                system_access_token_value = account.get("system_access_token")
+                api_user = account.get("api_user")
+
+                if system_access_token_value and api_user:
+                    valid_system_access_token = True
+                elif system_access_token_value and not api_user:
+                    print(f"⚠️ {account_name} with system_access_token must have api_user field")
+                elif not system_access_token_value:
+                    print(f"⚠️ {account_name} system_access_token is empty")
+
+            # 验证 cookies 配置
+            valid_cookies = False
+            if has_cookies:
+                cookies_config = account.get("cookies")
+                api_user = account.get("api_user")
+
+                if cookies_config and api_user:
+                    valid_cookies = True
+                elif cookies_config and not api_user:
+                    print(f"⚠️ {account_name} with cookies must have api_user field")
+                elif not cookies_config:
+                    print(f"⚠️ {account_name} cookies is empty")
+
+            # 检查解析后是否至少有一个有效的认证方式
+            has_valid_linux_do = linux_do_accounts is not None and len(linux_do_accounts) > 0
+            has_valid_github = github_accounts is not None and len(github_accounts) > 0
+            has_valid_site = site_accounts is not None and len(site_accounts) > 0
+
+            if not has_valid_linux_do and not has_valid_github and not has_valid_site and not valid_system_access_token and not valid_cookies:
+                print(
+                    f"⚠️ {account_name} must have at least one valid authentication method (site, linux.do, github, system_access_token, or cookies), skipping"
+                )
+                continue
+
+            # 创建 AccountConfig，传入解析后的账号列表
+            account_config = AccountConfig.from_dict(
+                account, linux_do_accounts, github_accounts, site_accounts
+            )
+            accounts.append(account_config)
+
+        return accounts
+
+    @classmethod
+    def _load_local_config_file(cls, accounts_file: str) -> dict | None:
+        """加载本地 accounts.json 配置文件（可选）
+
+        本地配置文件的键名与 GitHub Secret 一致:
+        {
+            "ACCOUNTS": [...],              # 账号列表
+            "ACCOUNTS_LINUX_DO": [...],     # Linux.do 账号池
+            "ACCOUNTS_GITHUB": [...],       # GitHub 账号池
+            "PROVIDERS": {...}              # 自定义 provider
+        }
+
+        Args:
+            accounts_file: 本地配置文件路径，默认 "accounts.json"
+
+        Returns:
+            配置文件内容字典，文件不存在或解析失败返回 None
+        """
+        if not os.path.exists(accounts_file):
+            return None
+
+        try:
+            with open(accounts_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                print(f"⚠️ {accounts_file} must be a JSON object, ignoring")
+                return None
+            print(f"⚙️ Loaded local config file: {accounts_file}")
+            return data
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Failed to parse {accounts_file}: {e}, ignoring")
+            return None
+        except Exception as e:
+            print(f"⚠️ Error loading {accounts_file}: {e}, ignoring")
+            return None
+
+    @classmethod
+    def _merge_accounts(
+        cls,
+        env_accounts: List["AccountConfig"],
+        local_accounts_data: list,
+        global_linux_do_accounts: List["OAuthAccountConfig"],
+        global_github_accounts: List["OAuthAccountConfig"],
+        source: str = "accounts.json",
+    ) -> List["AccountConfig"]:
+        """合并本地配置文件中的账号（环境变量 ACCOUNTS + 本地 accounts.json）
+
+        规则: 有 name 的账号按 name 去重，本地配置覆盖环境变量中的同名账号；
+        没有 name 的账号总是追加。
+
+        Args:
+            env_accounts: 从环境变量解析的账号列表
+            local_accounts_data: 本地配置文件的 ACCOUNTS 数据（原始 dict 列表）
+            global_linux_do_accounts: 全局 Linux.do 账号列表
+            global_github_accounts: 全局 GitHub 账号列表
+            source: 数据来源描述（用于日志输出）
+
+        Returns:
+            合并后的账号列表
+        """
+        local_accounts = cls._parse_accounts_data(
+            local_accounts_data, global_linux_do_accounts, global_github_accounts, source=source
+        )
+        if not local_accounts:
+            return env_accounts
+
+        local_names = {a.name for a in local_accounts if a.name}
+        merged = [acct for acct in env_accounts if not (acct.name and acct.name in local_names)]
+        merged.extend(local_accounts)
+        return merged
+
+    @classmethod
+    def _merge_oauth_pool(
+        cls,
+        env_accounts: List["OAuthAccountConfig"],
+        local_accounts_data,
+        source: str,
+    ) -> List["OAuthAccountConfig"]:
+        """合并本地配置文件中的 OAuth 账号池（环境变量 + 本地 accounts.json）
+
+        规则: 按 username 去重，本地配置覆盖环境变量中的同名账号。
+
+        Args:
+            env_accounts: 从环境变量加载的账号池
+            local_accounts_data: 本地配置文件的账号池数据
+            source: 数据来源描述（用于日志输出）
+
+        Returns:
+            合并后的账号池列表
+        """
+        if not isinstance(local_accounts_data, list):
+            return env_accounts
+
+        local_accounts = []
+        for i, item in enumerate(local_accounts_data):
+            if not isinstance(item, dict) or not item.get("username") or not item.get("password"):
+                print(f"⚠️ {source} account {i + 1} must contain username and password, skipping")
+                continue
+            local_accounts.append(OAuthAccountConfig.from_dict(item))
+
+        if not local_accounts:
+            return env_accounts
+
+        local_usernames = {a.username for a in local_accounts}
+        merged = [acct for acct in env_accounts if acct.username not in local_usernames]
+        merged.extend(local_accounts)
+        return merged
+
+    @classmethod
+    def _merge_providers(
+        cls,
+        providers: Dict[str, ProviderConfig],
+        providers_data,
+        source: str,
+    ) -> Dict[str, ProviderConfig]:
+        """合并本地配置文件中的自定义 providers（环境变量 + 本地 accounts.json）
+
+        Args:
+            providers: 现有 providers 字典（会被修改）
+            providers_data: 本地配置文件的 PROVIDERS 数据
+            source: 数据来源描述（用于日志输出）
+
+        Returns:
+            合并后的 providers 字典
+        """
+        if not isinstance(providers_data, dict) or not providers_data:
+            return providers
+        return cls._parse_providers_data(providers, providers_data, source)
 
     def get_provider(self, name: str) -> ProviderConfig | None:
         """获取指定 provider 配置"""

@@ -4,6 +4,11 @@ on:
     - cron: '0 0,8 * * *'
   workflow_dispatch:
     inputs:
+      config:
+        description: '完整配置 (APP_CONFIG JSON，推荐，不填则使用 secrets.APP_CONFIG)'
+        required: false
+        type: string
+        default: ''
       accounts:
         description: '账号配置 (JSON 格式，可选，不填则使用 secrets.ACCOUNTS)'
         required: false
@@ -105,6 +110,7 @@ jobs:
             
     - name: 执行签到
       env:
+        APP_CONFIG: ${{ inputs.config || secrets.APP_CONFIG }}
         ACCOUNTS: ${{ inputs.accounts || secrets.ACCOUNTS }}
         ACCOUNTS_LINUX_DO: ${{ secrets.ACCOUNTS_LINUX_DO }}
         ACCOUNTS_GITHUB: ${{ secrets.ACCOUNTS_GITHUB }}

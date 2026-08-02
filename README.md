@@ -55,6 +55,59 @@ Affs:
 - 生成器只在浏览器本地运行，不会上传你的账号或密码。
 - `ACCOUNTS_LINUX_DO` 与 `ACCOUNTS_GITHUB` 使用相同 JSON 数组格式（`[{"username":"...","password":"..."}]`）。
 
+#### 2.0.1 配置管理器 manage_config.py（推荐 · 更新时不用全部重填）
+
+每次更新都要重写整个 `ACCOUNTS` JSON？用配置管理器按需增删改单个账号：
+
+```bash
+python manage_config.py               # 交互式菜单
+python manage_config.py list          # 列出账号
+python manage_config.py add           # 添加账号
+python manage_config.py edit 薄荷      # 编辑单个账号（只改备注名/站点/密钥/用户ID 等）
+python manage_config.py token 薄荷     # token 过期？只重填这一个账号的密钥，其他不动
+python manage_config.py remove 薄荷    # 删除单个账号
+python manage_config.py export        # 导出 Secret 值（直接复制到 GitHub）
+```
+
+**GitHub Actions 场景（推荐用统一变量 `APP_CONFIG`）**：
+
+`python manage_config.py export` 会优先输出统一变量 `APP_CONFIG` ——
+**一个 Secret 包含全部配置**（账号 + Linux.do/GitHub 账号池 + PROVIDERS + PROXY），
+在 GitHub → Settings → Environments → production 添加这一个 Secret 即可，
+之后每次更新只需替换这一个值（旧的 ACCOUNTS/PROVIDERS 等 Secret 可以保留不用管）。
+
+workflow 已支持：
+```yaml
+APP_CONFIG: ${{ inputs.config || secrets.APP_CONFIG }}
+```
+也可在手动运行时直接往 `config` 输入框粘贴新配置。
+
+**本地场景**：
+
+- 配置保存到本地 `accounts.json`（已加入 .gitignore，不会提交）
+- 首次运行自动从 `.env` 导入已有配置，无需重新填写
+- `main.py` 会自动读取并合并 `accounts.json`：与环境变量同名（账号按 `name`、账号池按 `username`）以文件为准，其余追加。所以**更新时只需改 `accounts.json` 里的一个条目**
+- `python manage_config.py sync` 会把合并结果写成统一变量 `APP_CONFIG` 同步回 `.env`
+
+`accounts.json` 格式（键名与 GitHub Secret 一致，全部可选）：
+
+```json
+{
+  "ACCOUNTS": [
+    {
+      "name": "备注名",
+      "provider": "x666",
+      "api_user": "用户ID",
+      "system_access_token": "Token",
+      "linux.do": true
+    }
+  ],
+  "ACCOUNTS_LINUX_DO": [{"username": "用户名", "password": "密码"}],
+  "ACCOUNTS_GITHUB": [{"username": "用户名", "password": "密码"}],
+  "PROVIDERS": {}
+}
+```
+
 #### 2.1 全局 OAuth 账号配置（可选）
 
 可以配置全局的 Linux.do 和 GitHub 账号，供多个 provider 共享使用。
