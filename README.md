@@ -67,7 +67,19 @@ python manage_config.py edit 薄荷      # 编辑单个账号（只改备注名/
 python manage_config.py token 薄荷     # token 过期？只重填这一个账号的密钥，其他不动
 python manage_config.py remove 薄荷    # 删除单个账号
 python manage_config.py export        # 导出 Secret 值（直接复制到 GitHub）
+python manage_config.py web           # 打开本地 Web 管理页（可视化查看/修改）
 ```
+
+**Web 管理页（推荐 · 能直观看到自己填过什么）**：
+
+`python manage_config.py web`（或直接 `python web_config.py`）会打开浏览器进入
+本地管理页 `http://127.0.0.1:8790/`：
+
+- 所有已配置的账号以表格展示，密钥显示为掩码（如 `yFLm****zw==`），一眼看清自己填过哪些
+- 点「编辑」精准修改单个账号：token 过期时只重填这一个的密钥，**其他账号不受影响**
+- 支持增删账号、管理 Linux.do/GitHub 账号池、自定义站点
+- 「💾 保存到 accounts.json」「📋 导出 APP_CONFIG」「🔄 同步到 .env」一键完成
+- 仅绑定 127.0.0.1，数据只在本地处理，不会上传
 
 **GitHub Actions 场景（推荐用统一变量 `APP_CONFIG`）**：
 

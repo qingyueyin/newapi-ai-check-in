@@ -21,6 +21,7 @@ GitHub Actions 场景：
     python manage_config.py pool          # 管理 OAuth 账号池 (Linux.do / GitHub)
     python manage_config.py export        # 导出 Secret 值（推荐 APP_CONFIG，粘贴到 GitHub）
     python manage_config.py sync          # 同步配置到 .env（写成统一变量 APP_CONFIG）
+    python manage_config.py web           # 打开本地 Web 管理页（可视化查看/修改）
 
 accounts.json 格式（键名与 GitHub Secret 一致，全部可选）:
 {
@@ -630,6 +631,14 @@ def sync_env(data):
     print(f"✅ 已同步到 {ENV_FILE}（统一变量 APP_CONFIG，其他设置保持不变）")
 
 
+def open_web(port: int = 8790):
+    """启动本地 Web 管理页（web_config.py）"""
+    import subprocess
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_config.py")
+    print(f"🌐 正在启动 Web 管理页 (http://127.0.0.1:{port}/)...")
+    subprocess.Popen([sys.executable, script, str(port)])
+
+
 def menu():
     data = load_data()
     while True:
@@ -647,6 +656,7 @@ def menu():
         print("  6) 自定义站点 (PROVIDERS)")
         print("  7) 导出 Secret 值 (GitHub)")
         print("  8) 同步到 .env")
+        print("  9) 打开 Web 管理页（可视化查看/修改）")
         print("  0) 退出")
         print()
         choice = input("  请选择: ").strip()
@@ -691,6 +701,9 @@ def menu():
             input("按回车返回...")
         elif choice == "8":
             sync_env(data)
+            input("\n按回车返回...")
+        elif choice == "9":
+            open_web()
             input("\n按回车返回...")
         elif choice == "0":
             break
@@ -742,6 +755,8 @@ def main():
         export_secrets(data)
     elif cmd == "sync":
         sync_env(data)
+    elif cmd in ("web", "serve"):
+        open_web(int(args[1]) if len(args) > 1 and args[1].isdigit() else 8790)
     else:
         print(f"❌ 未知命令: {cmd}")
         print(__doc__)
