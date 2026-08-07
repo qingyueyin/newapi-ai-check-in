@@ -314,6 +314,7 @@ class AppConfig:
     linux_do_accounts: List["OAuthAccountConfig"] = field(default_factory=list)  # 全局 Linux.do 账号列表
     github_accounts: List["OAuthAccountConfig"] = field(default_factory=list)  # 全局 GitHub 账号列表
     global_proxy: Dict | None = None
+    check_in_once_per_day: bool = False  # 每天只签到一次（当天已签到过则跳过），避免反复请求
 
     @classmethod
     def _parse_site_config(
@@ -374,6 +375,7 @@ class AppConfig:
         proxy_env: str = "PROXY",
         accounts_file: str = "accounts.json",
         app_config_env: str = "APP_CONFIG",
+        check_in_once_env: str = "CHECK_IN_ONCE_PER_DAY",
     ) -> "AppConfig":
         """从环境变量加载配置
 
@@ -381,21 +383,23 @@ class AppConfig:
 
         1. 统一变量 APP_CONFIG（推荐，GitHub Actions 只需维护 1 个 Secret）:
            {"ACCOUNTS": [...], "ACCOUNTS_LINUX_DO": [...], "ACCOUNTS_GITHUB": [...],
-            "PROVIDERS": {...}, "PROXY": "..."}
+            "PROVIDERS": {...}, "PROXY": "...", "CHECK_IN_ONCE_PER_DAY": true}
            设置后优先使用，忽略各独立环境变量和 accounts.json。
 
         2. 兼容模式（独立环境变量 + 本地 accounts.json 合并）:
            ACCOUNTS / PROVIDERS / ACCOUNTS_LINUX_DO / ACCOUNTS_GITHUB 各管各的，
            本地 accounts.json 若存在则自动合并（同名账号/账号池以文件为准，其余追加）。
+           CHECK_IN_ONCE_PER_DAY 可独立设为 true/false。
 
         Args:
             providers_env: 自定义 providers 配置的环境变量名称，默认为 "PROVIDERS"
             accounts_env: 账号配置的环境变量名称，默认为 "ACCOUNTS"
-            linux_do_accounts_env: Linux.do 账号配置的环境变量名称，默认为 "ACCOUNTS_LINUX_DO"
+            linux__do_accounts_env: Linux.do 账号配置的环境变量名称，默认为 "ACCOUNTS_LINUX_DO"
             github_accounts_env: GitHub 账号配置的环境变量名称，默认为 "ACCOUNTS_GITHUB"
             proxy_env: 全局代理配置的环境变量名称，默认为 "PROXY"
             accounts_file: 本地配置文件路径，默认为 "accounts.json"
             app_config_env: 统一配置变量名称，默认为 "APP_CONFIG"
+            check_in_once_env: 每天只签到一次的开关变量名称，默认为 "CHECK_IN_ONCE_PER_DAY"
         """
         # 优先使用统一配置变量 APP_CONFIG（一个变量包含全部配置）
         unified_str = os.getenv(app_config_env)
@@ -409,10 +413,11 @@ class AppConfig:
                 github_accounts_env,
                 proxy_env,
                 accounts_file,
+                check_in_once_env,
             )
 
         return cls._load_legacy(
-            providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file
+            providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file, check_in_once_env
         )
 
     @classmethod
@@ -424,6 +429,7 @@ class AppConfig:
         github_accounts_env: str,
         proxy_env: str,
         accounts_file: str,
+        check_in_once_env: str = "CHECK_IN_ONCE_PER_DAY",
     ) -> "AppConfig":
         """兼容模式：独立环境变量 + 本地 accounts.json 合并加载"""
         providers = cls._load_providers(providers_env)
@@ -458,12 +464,15 @@ class AppConfig:
         # 加载全局代理配置
         global_proxy = cls._load_proxy(proxy_env)
 
+        check_in_once_per_day = cls._parse_bool_env(check_in_once_env)
+
         return cls(
             providers=providers,
             accounts=accounts,
             linux_do_accounts=linux_do_accounts,
             github_accounts=github_accounts,
             global_proxy=global_proxy,
+            check_in_once_per_day=check_in_once_per_day,
         )
 
     @classmethod
@@ -477,6 +486,7 @@ class AppConfig:
         github_accounts_env: str,
         proxy_env: str,
         accounts_file: str = "accounts.json",
+        check_in_once_env: str = "CHECK_IN_ONCE_PER_DAY",
     ) -> "AppConfig":
         """从统一配置变量（APP_CONFIG）加载配置
 
@@ -486,7 +496,8 @@ class AppConfig:
             "ACCOUNTS_LINUX_DO": [...],
             "ACCOUNTS_GITHUB": [...],
             "PROVIDERS": {...},
-            "PROXY": "..."  # 可选
+            "PROXY": "..."                       # 可选
+            "CHECK_IN_ONCE_PER_DAY": true        # 可选，每天只签到一次
         }
 
         Args:
@@ -506,13 +517,13 @@ class AppConfig:
         except json.JSONDecodeError as e:
             print(f"⚠️ Failed to parse {app_config_env}: {e}, falling back to legacy configuration")
             return cls._load_legacy(
-                providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file
+                providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file, check_in_once_env
             )
 
         if not isinstance(data, dict):
             print(f"⚠️ {app_config_env} must be a JSON object, falling back to legacy configuration")
             return cls._load_legacy(
-                providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file
+                providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file, check_in_once_env
             )
 
         providers = cls._build_default_providers()
@@ -528,6 +539,12 @@ class AppConfig:
 
         global_proxy = cls._parse_proxy_value(data.get("PROXY"), app_config_env)
 
+        check_in_once_per_day = cls._parse_bool_value(
+            data.get("CHECK_IN_ONCE_PER_DAY"),
+        )
+        if not check_in_once_per_day:
+            check_in_once_per_day = cls._parse_bool_env(check_in_once_env)
+
         print(f"⚙️ Loaded unified config from {app_config_env} environment variable")
         return cls(
             providers=providers,
@@ -535,6 +552,7 @@ class AppConfig:
             linux_do_accounts=linux_do_accounts,
             github_accounts=github_accounts,
             global_proxy=global_proxy,
+            check_in_once_per_day=check_in_once_per_day,
         )
 
     @classmethod
@@ -1509,6 +1527,22 @@ class AppConfig:
         if not isinstance(providers_data, dict) or not providers_data:
             return providers
         return cls._parse_providers_data(providers, providers_data, source)
+
+    @staticmethod
+    def _parse_bool_value(value, default: bool = False) -> bool:
+        """解析布尔配置值，支持 bool / int / str 多种格式"""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return default
+
+    @classmethod
+    def _parse_bool_env(cls, env_name: str) -> bool:
+        """从环境变量解析布尔配置值（"1"/"true"/"yes"/"on" 视为 True）"""
+        return cls._parse_bool_value(os.getenv(env_name))
 
     def get_provider(self, name: str) -> ProviderConfig | None:
         """获取指定 provider 配置"""

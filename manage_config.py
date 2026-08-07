@@ -20,8 +20,9 @@ GitHub Actions 场景：
     python manage_config.py remove <名称> # 删除账号
     python manage_config.py pool          # 管理 OAuth 账号池 (Linux.do / GitHub)
     python manage_config.py export        # 导出 Secret 值（推荐 APP_CONFIG，粘贴到 GitHub）
-    python manage_config.py sync          # 同步配置到 .env（写成统一变量 APP_CONFIG）
-    python manage_config.py web           # 打开本地 Web 管理页（可视化查看/修改）
+    python manage_config.py sync           # 同步配置到 .env（写成统一变量 APP_CONFIG）
+    python manage_config.py flag           # 开/关「每天只签到一次」（当天签到成功后跳过）
+    python manage_config.py web            # 打开本地 Web 管理页（可视化查看/修改）
 
 accounts.json 格式（键名与 GitHub Secret 一致，全部可选）:
 {
@@ -59,6 +60,7 @@ ENV_FILE = ".env"
 BACKUP_FILE = "env_secrets_backup.json"
 
 CONFIG_KEYS = ("ACCOUNTS", "ACCOUNTS_LINUX_DO", "ACCOUNTS_GITHUB", "PROVIDERS")
+EXTRA_KEYS = ("CHECK_IN_ONCE_PER_DAY",)
 
 BUILTIN_PROVIDERS = {
     "anyrouter": "https://anyrouter.top",
@@ -126,16 +128,18 @@ def read_env_config():
             if key == "PROXY":
                 config["PROXY"] = value.strip()
                 continue
-            if key not in CONFIG_KEYS:
+            if key not in CONFIG_KEYS + EXTRA_KEYS:
                 continue
             try:
                 config[key] = json.loads(value.strip())
             except json.JSONDecodeError:
-                pass
+                config[key] = value.strip()
     if isinstance(unified, dict):
-        for key in CONFIG_KEYS:
+        for key in CONFIG_KEYS + EXTRA_KEYS:
             if key in unified:
                 config[key] = unified[key]
+        if "PROXY" in unified:
+            config["PROXY"] = unified["PROXY"]
     return config
 
 
@@ -523,22 +527,112 @@ def merge_pool(env_pool, file_pool):
     return merged
 
 
+def copy_to_clipboard(text):
+    """复制文本到系统剪贴板（Windows PowerShell，失败静默忽略）"""
+    try:
+        import base64
+        import subprocess
+        payload = base64.b64encode(text.encode("utf-8")).decode("ascii")
+        cmd = ("$b=[Convert]::FromBase64String('" + payload + "');"
+               "$s=[Text.Encoding]::UTF8.GetString($b);Set-Clipboard -Value $s")
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", cmd],
+            creationflags=flags, timeout=10, check=False,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _env_orphan_counts(env, data):
+    """返回 .env 中有但本地文件没有（会从导出中消失）的条目数量"""
+    report = []
+    for key, name_field in (
+        ("ACCOUNTS", "name"),
+        ("ACCOUNTS_LINUX_DO", "username"),
+        ("ACCOUNTS_GITHUB", "username"),
+    ):
+        names = {a.get(name_field) for a in (data.get(key) or [])
+                 if isinstance(a, dict) and a.get(name_field)}
+        missing = [a for a in (env.get(key) or [])
+                   if isinstance(a, dict) and a.get(name_field) and a.get(name_field) not in names]
+        if missing:
+            report.append(f"{key} {len(missing)} 个")
+    return report
+
+
+def env_flag_enabled():
+    """读取「每天只签到一次」开关当前值（来自 .env / APP_CONFIG）"""
+    value = read_env_config().get("CHECK_IN_ONCE_PER_DAY")
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def set_check_in_once_per_day(enabled):
+    """开/关「每天只签到一次」。写入 .env：有 APP_CONFIG 则并入 JSON，否则写独立行"""
+    key = "CHECK_IN_ONCE_PER_DAY"
+    lines = []
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    app_idx = next((i for i, ln in enumerate(lines)
+                    if ln.strip().startswith("APP_CONFIG=")), None)
+    if app_idx is not None:
+        out = []
+        for i, ln in enumerate(lines):
+            if i == app_idx:
+                raw = ln.strip()[len("APP_CONFIG="):]
+                try:
+                    obj = json.loads(raw)
+                except json.JSONDecodeError:
+                    obj = {}
+                if not isinstance(obj, dict):
+                    obj = {}
+                if enabled:
+                    obj[key] = True
+                else:
+                    obj.pop(key, None)
+                out.append("APP_CONFIG=" + json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n")
+            else:
+                out.append(ln)
+        lines = out
+    else:
+        lines = [ln for ln in lines if not ln.strip().startswith(key + "=")]
+        if enabled:
+            lines.append(f"{key}=true\n")
+    with open(ENV_FILE, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    return enabled
+
+
 def export_secrets(data):
-    """导出合并后的全部 Secret 值（环境变量 + accounts.json）"""
+    """导出全部 Secret 值（以本地 accounts.json 为准，删除才会真正生效）"""
     env = read_env_config()
-    accounts = merge_accounts(env.get("ACCOUNTS") or [], data.get("ACCOUNTS") or [])
-    linuxdo = merge_pool(env.get("ACCOUNTS_LINUX_DO") or [], data.get("ACCOUNTS_LINUX_DO") or [])
-    github = merge_pool(env.get("ACCOUNTS_GITHUB") or [], data.get("ACCOUNTS_GITHUB") or [])
-    providers = {**(env.get("PROVIDERS") or {}), **(data.get("PROVIDERS") or {})}
+    accounts = data.get("ACCOUNTS") or []
+    linuxdo = data.get("ACCOUNTS_LINUX_DO") or []
+    github = data.get("ACCOUNTS_GITHUB") or []
+    providers = data.get("PROVIDERS") or {}
     proxy = env.get("PROXY")
 
     clear_screen()
     print("=" * 62)
-    print("  ✅ Secret 导出（复制下面内容到 GitHub → Settings → Environments → production）")
+    print("  ✅ 导出（复制到 GitHub → Settings → Environments → production）")
     print("=" * 62)
     print()
 
+    orphans = _env_orphan_counts(env, data)
+    if orphans:
+        print("  ⚠️ 以下数据只存在于 .env，不在本地文件，导出不会包含:")
+        for o in orphans:
+            print(f"     · {o}")
+        print("     如需保留请在 manage_config / Web 页中添加。")
+        print()
+
     # 统一变量 APP_CONFIG：一个 Secret 搞定全部，优先推荐
+    once_per_day = env.get("CHECK_IN_ONCE_PER_DAY")
     unified = {key: value for key, value in {
         "ACCOUNTS": accounts,
         "ACCOUNTS_LINUX_DO": linuxdo,
@@ -547,6 +641,8 @@ def export_secrets(data):
     }.items() if value}
     if proxy:
         unified["PROXY"] = proxy
+    if once_per_day:
+        unified["CHECK_IN_ONCE_PER_DAY"] = once_per_day
     print("─" * 62)
     print("  推荐 Secret:  APP_CONFIG（一个变量包含全部配置，GitHub 只需维护这一个）")
     print("─" * 62)
@@ -595,17 +691,20 @@ def export_secrets(data):
         print(f"📄 已备份到: {BACKUP_FILE}")
     except Exception:
         pass
+
+    if unified and copy_to_clipboard(json.dumps(unified, ensure_ascii=False, separators=(",", ":"))):
+        print("📋 已自动复制到剪贴板，直接去 GitHub 粘贴即可")
     print()
 
 
 def sync_env(data):
-    """同步配置到 .env（推荐：写成统一变量 APP_CONFIG，其他设置保留）"""
+    """同步配置到 .env（以本地 accounts.json 为准，删除才会真正生效）"""
     env = read_env_config()
     effective = {
-        "ACCOUNTS": merge_accounts(env.get("ACCOUNTS") or [], data.get("ACCOUNTS") or []),
-        "ACCOUNTS_LINUX_DO": merge_pool(env.get("ACCOUNTS_LINUX_DO") or [], data.get("ACCOUNTS_LINUX_DO") or []),
-        "ACCOUNTS_GITHUB": merge_pool(env.get("ACCOUNTS_GITHUB") or [], data.get("ACCOUNTS_GITHUB") or []),
-        "PROVIDERS": {**(env.get("PROVIDERS") or {}), **(data.get("PROVIDERS") or {})},
+        "ACCOUNTS": data.get("ACCOUNTS") or [],
+        "ACCOUNTS_LINUX_DO": data.get("ACCOUNTS_LINUX_DO") or [],
+        "ACCOUNTS_GITHUB": data.get("ACCOUNTS_GITHUB") or [],
+        "PROVIDERS": data.get("PROVIDERS") or {},
     }
     proxy = env.get("PROXY")
     if proxy:
@@ -614,6 +713,13 @@ def sync_env(data):
     unified = {key: effective[key] for key in CONFIG_KEYS if effective.get(key)}
     if proxy:
         unified["PROXY"] = proxy
+    if env.get("CHECK_IN_ONCE_PER_DAY"):
+        unified["CHECK_IN_ONCE_PER_DAY"] = env["CHECK_IN_ONCE_PER_DAY"]
+
+    if not effective["ACCOUNTS"] and (env.get("ACCOUNTS")):
+        print(f"  ⚠️ 本地文件没有账号，但 .env 里还有 {len(env['ACCOUNTS'])} 个。同步后它们会从 APP_CONFIG 中移除（删除生效）。")
+    if not effective["ACCOUNTS_LINUX_DO"] and (env.get("ACCOUNTS_LINUX_DO")):
+        print(f"  ⚠️ 本地没有 Linux.do 账号池，而 .env 里还有 {len(env['ACCOUNTS_LINUX_DO'])} 个。已移除。")
 
     lines = []
     if os.path.exists(ENV_FILE):
@@ -622,7 +728,7 @@ def sync_env(data):
     kept = [
         ln for ln in lines
         if not ln.strip() or ln.strip().startswith("#") or "=" not in ln
-        or ln.strip().partition("=")[0].strip() not in CONFIG_KEYS + ("APP_CONFIG", "PROXY")
+        or ln.strip().partition("=")[0].strip() not in CONFIG_KEYS + EXTRA_KEYS + ("APP_CONFIG", "PROXY")
     ]
     with open(ENV_FILE, "w", encoding="utf-8") as f:
         f.writelines(kept)
@@ -657,6 +763,7 @@ def menu():
         print("  7) 导出 Secret 值 (GitHub)")
         print("  8) 同步到 .env")
         print("  9) 打开 Web 管理页（可视化查看/修改）")
+        print("  10) 每天只签到一次 开关")
         print("  0) 退出")
         print()
         choice = input("  请选择: ").strip()
@@ -705,6 +812,18 @@ def menu():
         elif choice == "9":
             open_web()
             input("\n按回车返回...")
+        elif choice == "10":
+            clear_screen()
+            print("  每天只签到一次: 开启后当天签到成功一次，其余账号自动跳过（跨天自动重置）")
+            print(f"  当前状态: {'✅ 已开启' if env_flag_enabled() else '⛔ 已关闭'}")
+            ans = input("  开启输入 y，关闭输入 n，返回输入 q: ").strip().lower()
+            if ans == "y":
+                set_check_in_once_per_day(True)
+                print("  ✅ 已开启（记得 sync/export 同步到 GitHub Secret）")
+            elif ans == "n":
+                set_check_in_once_per_day(False)
+                print("  ✅ 已关闭")
+            input("\n按回车返回...")
         elif choice == "0":
             break
         else:
@@ -751,10 +870,22 @@ def main():
             manage_pool(data, "ACCOUNTS_GITHUB", "GitHub")
         else:
             manage_pool(data, "ACCOUNTS_LINUX_DO", "Linux.do")
-    elif cmd == "export":
-        export_secrets(data)
     elif cmd == "sync":
         sync_env(data)
+    elif cmd == "flag":
+        print(f"每天只签到一次 当前状态: {'✅ 已开启' if env_flag_enabled() else '⛔ 已关闭'}")
+        if len(args) >= 2:
+            ans = args[1].lower()
+        else:
+            ans = input("开启 y / 关闭 n (q 退出): ").strip().lower()
+        if ans in ("y", "yes", "on", "1"):
+            set_check_in_once_per_day(True)
+            print("✅ 已开启（记得 export/sync 同步到 GitHub Secret）")
+        elif ans in ("n", "no", "off", "0"):
+            set_check_in_once_per_day(False)
+            print("✅ 已关闭")
+        elif ans != "q":
+            print("用法: python manage_config.py flag [on|off]")
     elif cmd in ("web", "serve"):
         open_web(int(args[1]) if len(args) > 1 and args[1].isdigit() else 8790)
     else:

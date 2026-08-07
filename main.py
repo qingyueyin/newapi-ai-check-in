@@ -12,6 +12,12 @@ from dotenv import load_dotenv
 from utils.config import AppConfig
 from utils.notify import notify
 from utils.balance_hash import load_balance_hash, save_balance_hash
+from utils.daily_checkin_status import (
+    DEFAULT_FILE as DAILY_CHECKIN_FILE,
+    load_records as load_daily_records,
+    save_records as save_daily_records,
+    clean_records as clean_daily_records,
+)
 from checkin import CheckIn
 
 load_dotenv(override=True)
@@ -57,8 +63,16 @@ async def main():
     # 加载余额hash
     last_balance_hash = load_balance_hash(BALANCE_HASH_FILE)
 
+    # 每天只签到一次开关：加载当日记录，已签过的账号跳过
+    daily_records = {}
+    if app_config.check_in_once_per_day:
+        daily_records = load_daily_records()
+        daily_records = clean_daily_records(daily_records)
+        print(f"⚙️ CHECK_IN_ONCE_PER_DAY enabled: {len(daily_records)} account(s) already checked in today")
+
     # 为每个账号执行签到
     success_count = 0
+    skipped_count = 0
     total_count = 0
     notification_content = []
     current_balances = {}
@@ -67,6 +81,13 @@ async def main():
     for i, account_config in enumerate(app_config.accounts):
         account_key = f"account_{i + 1}"
         account_name = account_config.get_display_name(i)
+
+        # 每天只签到一次：今天已签过则跳过
+        if app_config.check_in_once_per_day and daily_records.get(account_name):
+            skipped_count += 1
+            print(f"⏭️ {account_name}: Already checked in today, skipping (CHECK_IN_ONCE_PER_DAY)")
+            continue
+
         if len(notification_content) > 0:
             notification_content.append("\n-------------------------------")
 
@@ -119,6 +140,16 @@ async def main():
 
             if account_success:
                 current_balances[account_key] = this_account_balances
+                # 每天只签到一次：记录今天已签
+                if app_config.check_in_once_per_day:
+                    daily_records[account_name] = datetime.now().strftime("%Y-%m-%d")
+                    print(f"📝 {account_name}: Recorded check-in for today (CHECK_IN_ONCE_PER_DAY)")
+                # 每天只签到一次：记录今天已签
+                if app_config.check_in_once_per_day:
+                    from datetime import date as _today
+
+                    daily_records[account_name] = _today().strftime("%Y-%m-%d")
+                    print(f"📝 {account_name}: Recorded check-in for today (CHECK_IN_ONCE_PER_DAY)")
 
             # 如果所有认证方式都失败，需要通知
             if not account_success and results:
@@ -144,6 +175,11 @@ async def main():
             print(f"❌ {account_name} processing exception: {e}")
             need_notify = True  # 异常也需要通知
             notification_content.append(f"❌ {account_name} Exception: {str(e)[:100]}...")
+
+    # 每天只签到一次：保存当日记录（供下次运行跳过）
+    if app_config.check_in_once_per_day and daily_records:
+        cleaned = clean_daily_records(daily_records)
+        save_daily_records(cleaned)
 
     # 检查余额变化
     current_balance_hash = generate_balance_hash(current_balances) if current_balances else None
@@ -190,8 +226,11 @@ async def main():
     else:
         print("ℹ️ All accounts successful and no balance changes detected, notification skipped")
 
-    # 设置退出码
-    sys.exit(0 if success_count > 0 else 1)
+    # 设置退出码：全部为"今天已跳过"时也算成功（不触发失败通知）
+    if success_count > 0 or (skipped_count > 0 and skipped_count == len(app_config.accounts)):
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 
 def run_main():

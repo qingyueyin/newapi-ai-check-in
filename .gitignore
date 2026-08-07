@@ -9,6 +9,7 @@ storage-states
 logs
 balance_hash.txt
 balance_hash_*.txt
+daily_checkin_records.json
 linuxdo_reads
 **backup**
 

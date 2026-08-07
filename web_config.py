@@ -27,17 +27,18 @@ from manage_config import (
     DATA_FILE,
     ENV_FILE,
     empty_data,
+    env_flag_enabled,
     load_data,
     match_provider,
     make_provider_key,
-    merge_accounts,
-    merge_pool,
     read_env_config,
     save_data,
+    set_check_in_once_per_day,
 )
 
 DEFAULT_PORT = 8790
 CONFIG_KEYS = ("ACCOUNTS", "ACCOUNTS_LINUX_DO", "ACCOUNTS_GITHUB", "PROVIDERS")
+EXTRA_KEYS = ("CHECK_IN_ONCE_PER_DAY",)
 
 PAGE = r"""<!doctype html>
 <html lang="zh-CN">
@@ -171,6 +172,14 @@ tr:hover td{background:rgba(0,0,0,0.15)}
       <button class="btn" onclick="doSync()">🔄 同步到 .env</button>
     </div>
     <div class="warn-line">保存后点「导出 APP_CONFIG」→ 复制 → GitHub → Settings → Environments → production → 替换名为 APP_CONFIG 的 Secret 即可。</div>
+    <div class="row-actions" style="margin-top:12px;align-items:center">
+      <label style="margin:0;display:inline-flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="onceCb" style="width:16px;height:16px;accent-color:var(--primary)">
+        每天只签到一次（已签成功的账号当天跳过，跨天自动重置）
+      </label>
+      <button class="btn sm" onclick="saveOnceFlag()">保存开关</button>
+      <span class="warn-line" style="margin:0">写入 .env，需 sync / 导出同步到 GitHub</span>
+    </div>
   </div>
 </div>
 
@@ -467,6 +476,18 @@ async function doSync() {
     toast('✅ 已同步到 .env');
   } catch (e) { toast('❌ ' + e.message); }
 }
+async function saveOnceFlag() {
+  try {
+    const r = await api('/api/settings', { check_in_once_per_day: document.getElementById('onceCb').checked });
+    toast(r.check_in_once_per_day ? '✅ 已开启「每天只签到一次」' : '✅ 已关闭');
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function loadOnceFlag() {
+  try {
+    const r = await api('/api/settings');
+    document.getElementById('onceCb').checked = !!r.check_in_once_per_day;
+  } catch (e) {}
+}
 
 /* ---------- 初始化 ---------- */
 async function init() {
@@ -482,6 +503,7 @@ async function init() {
     renderAccounts();
     renderPools();
     renderProviders();
+    loadOnceFlag();
   } catch (e) {
     document.getElementById('accountTableWrap').innerHTML =
       '<div class="empty">加载失败: ' + esc(e.message) + '</div>';
@@ -495,11 +517,11 @@ init();
 
 
 def build_payload(data, env):
-    """根据提交的数据 + 环境变量，构建合并后的完整配置"""
-    accounts = merge_accounts(env.get("ACCOUNTS") or [], data.get("accounts") or [])
-    linuxdo = merge_pool(env.get("ACCOUNTS_LINUX_DO") or [], data.get("linuxdo") or [])
-    github = merge_pool(env.get("ACCOUNTS_GITHUB") or [], data.get("github") or [])
-    providers = {**(env.get("PROVIDERS") or {}), **(data.get("providers") or {})}
+    """根据提交的数据构建完整配置（以页面内容为准，删除才会真正生效）"""
+    accounts = data.get("accounts") or []
+    linuxdo = data.get("linuxdo") or []
+    github = data.get("github") or []
+    providers = data.get("providers") or {}
     return accounts, linuxdo, github, providers
 
 
@@ -542,6 +564,8 @@ class Handler(BaseHTTPRequestHandler):
                 "builtin": BUILTIN_PROVIDERS,
                 "env_legacy_keys": legacy,
             })
+        elif path == "/api/settings":
+            self._send_json({"check_in_once_per_day": env_flag_enabled()})
         else:
             self._send_json({"error": "not found"}, 404)
 
@@ -569,6 +593,8 @@ class Handler(BaseHTTPRequestHandler):
                 }.items() if v}
                 if env.get("PROXY"):
                     unified["PROXY"] = env["PROXY"]
+                if env.get("CHECK_IN_ONCE_PER_DAY"):
+                    unified["CHECK_IN_ONCE_PER_DAY"] = env["CHECK_IN_ONCE_PER_DAY"]
                 self._send_json({"app_config": json.dumps(unified, ensure_ascii=False, separators=(",", ":"))})
             elif path == "/api/sync":
                 from manage_config import CONFIG_KEYS as _CK
@@ -584,6 +610,8 @@ class Handler(BaseHTTPRequestHandler):
                 unified = {k: v for k, v in effective.items() if v}
                 if proxy:
                     unified["PROXY"] = proxy
+                if env.get("CHECK_IN_ONCE_PER_DAY"):
+                    unified["CHECK_IN_ONCE_PER_DAY"] = env["CHECK_IN_ONCE_PER_DAY"]
 
                 lines = []
                 if os.path.exists(ENV_FILE):
@@ -592,13 +620,17 @@ class Handler(BaseHTTPRequestHandler):
                 kept = [
                     ln for ln in lines
                     if not ln.strip() or ln.strip().startswith("#") or "=" not in ln
-                    or ln.strip().partition("=")[0].strip() not in _CK + ("APP_CONFIG", "PROXY")
+                    or ln.strip().partition("=")[0].strip() not in _CK + ("APP_CONFIG", "PROXY", "CHECK_IN_ONCE_PER_DAY")
                 ]
                 with open(ENV_FILE, "w", encoding="utf-8") as f:
                     f.writelines(kept)
                     if unified:
                         f.write(f"APP_CONFIG={json.dumps(unified, ensure_ascii=False, separators=(',', ':'))}\n")
                 self._send_json({"ok": True})
+            elif path == "/api/settings":
+                enabled = bool(body.get("check_in_once_per_day"))
+                set_check_in_once_per_day(enabled)
+                self._send_json({"ok": True, "check_in_once_per_day": enabled})
             else:
                 self._send_json({"error": "not found"}, 404)
         except Exception as e:

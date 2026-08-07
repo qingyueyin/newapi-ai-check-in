@@ -108,6 +108,15 @@ jobs:
         restore-keys: |
           balance-hash-
             
+    - name: 恢复每日签到记录缓存（CHECK_IN_ONCE_PER_DAY 用）
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          daily_checkin_records.json
+        key: daily-checkin-${{ github.run_id }}
+        restore-keys: |
+          daily-checkin-
+            
     - name: 执行签到
       env:
         APP_CONFIG: ${{ inputs.config || secrets.APP_CONFIG }}
@@ -116,6 +125,7 @@ jobs:
         ACCOUNTS_GITHUB: ${{ secrets.ACCOUNTS_GITHUB }}
         PROVIDERS: ${{ inputs.providers || secrets.PROVIDERS }}
         PROXY: ${{secrets.PROXY}}
+        CHECK_IN_ONCE_PER_DAY: ${{ secrets.CHECK_IN_ONCE_PER_DAY || '' }}
         STORATE_STATES_GITHUB: ${{ secrets.STORATE_STATES_GITHUB }}
         STORATE_STATES_LINUXDO: ${{ secrets.STORATE_STATES_LINUXDO }}
         DEBUG: ${{ github.event_name == 'workflow_dispatch' && inputs.debug || vars.DEBUG || 'false' }}
@@ -163,6 +173,14 @@ jobs:
         path: |
           balance_hash.txt
         key: balance-hash-${{ hashFiles('balance_hash.txt') }}
+
+    - name: 保存每日签到记录缓存
+      if: hashFiles('daily_checkin_records.json') != ''
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          daily_checkin_records.json
+        key: daily-checkin-${{ github.run_id }}
 
     - name: 保存日志
       if: always()

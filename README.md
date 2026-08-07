@@ -66,7 +66,8 @@ python manage_config.py add           # 添加账号
 python manage_config.py edit 薄荷      # 编辑单个账号（只改备注名/站点/密钥/用户ID 等）
 python manage_config.py token 薄荷     # token 过期？只重填这一个账号的密钥，其他不动
 python manage_config.py remove 薄荷    # 删除单个账号
-python manage_config.py export        # 导出 Secret 值（直接复制到 GitHub）
+python manage_config.py export        # 导出 Secret 值（自动复制到剪贴板，粘贴到 GitHub）
+python manage_config.py flag          # 开/关「每天只签到一次」（当天签到成功后跳过）
 python manage_config.py web           # 打开本地 Web 管理页（可视化查看/修改）
 ```
 
@@ -79,13 +80,15 @@ python manage_config.py web           # 打开本地 Web 管理页（可视化�
 - 点「编辑」精准修改单个账号：token 过期时只重填这一个的密钥，**其他账号不受影响**
 - 支持增删账号、管理 Linux.do/GitHub 账号池、自定义站点
 - 「💾 保存到 accounts.json」「📋 导出 APP_CONFIG」「🔄 同步到 .env」一键完成
+- 「每天只签到一次」开关直接在页面上勾选，无需手改 JSON
+- **删除即生效**：增删改都写到本地 accounts.json，导出/同步以它为准，删除的账号不会“幽灵复活”
 - 仅绑定 127.0.0.1，数据只在本地处理，不会上传
 
 **GitHub Actions 场景（推荐用统一变量 `APP_CONFIG`）**：
 
 `python manage_config.py export` 会优先输出统一变量 `APP_CONFIG` ——
-**一个 Secret 包含全部配置**（账号 + Linux.do/GitHub 账号池 + PROVIDERS + PROXY），
-在 GitHub → Settings → Environments → production 添加这一个 Secret 即可，
+**一个 Secret 包含全部配置**（账号 + Linux.do/GitHub 账号池 + PROVIDERS + PROXY + CHECK_IN_ONCE_PER_DAY），
+并且已自动复制到剪贴板，粘贴到 GitHub → Settings → Environments → production 即可。
 之后每次更新只需替换这一个值（旧的 ACCOUNTS/PROVIDERS 等 Secret 可以保留不用管）。
 
 workflow 已支持：
@@ -93,6 +96,19 @@ workflow 已支持：
 APP_CONFIG: ${{ inputs.config || secrets.APP_CONFIG }}
 ```
 也可在手动运行时直接往 `config` 输入框粘贴新配置。
+
+**每天只签到一次 `CHECK_IN_ONCE_PER_DAY`（可选）**：
+
+默认 schedule 每天跑两次（0 点/8 点 UTC，北京时间 8 点/16 点），有些站每天只能签到一次，
+第二次运行会触发"反复请求"。如需每天只签到一次：
+
+- 方式 A：把 `CHECK_IN_ONCE_PER_DAY: true` 加入 `APP_CONFIG`（export 会自动带上）
+- 方式 B：单独添加 GitHub Secret `CHECK_IN_ONCE_PER_DAY=true`
+- 方式 C：直接 `python manage_config.py flag` 或在 Web 页「保存与同步」里勾选开关（写入 .env，然后 export/sync 同步）
+
+开启后，`main.py` 会把当天已签到成功的账号写到 `daily_checkin_records.json`；
+workflow 已配置把该文件跨 run 缓存，当天的后续运行会直接跳过已签账号（跨天自动失效）。
+第一个时间点签到成功，第二个时间点运行会显示 "Already checked in today, skipping"，不会重复请求。
 
 **本地场景**：
 
