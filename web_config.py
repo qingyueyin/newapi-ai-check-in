@@ -171,7 +171,10 @@ tr:hover td{background:rgba(0,0,0,0.15)}
       <button class="btn" onclick="doExport()">📋 导出 APP_CONFIG（GitHub）</button>
       <button class="btn" onclick="doSync()">🔄 同步到 .env</button>
     </div>
-    <div class="warn-line">保存后点「导出 APP_CONFIG」→ 复制 → GitHub → Settings → Environments → production → 替换名为 APP_CONFIG 的 Secret 即可。</div>
+    <div class="warn-line">所有改动都会自动保存到本机 accounts.json（仅本地，不上传）。改动后点「导出 APP_CONFIG」→ 复制 → GitHub → Settings → Environments → production → 替换名为 APP_CONFIG 的 Secret 即可。</div>
+    <div class="row-actions" style="margin-top:6px;align-items:center">
+      <span id="saveState" style="font-size:0.82rem;color:var(--success)">✔ 已保存到本机 accounts.json</span>
+    </div>
     <div class="row-actions" style="margin-top:12px;align-items:center">
       <label style="margin:0;display:inline-flex;align-items:center;gap:8px;cursor:pointer">
         <input type="checkbox" id="onceCb" style="width:16px;height:16px;accent-color:var(--primary)">
@@ -198,6 +201,40 @@ let state = { accounts: [], linuxdo: [], github: [], providers: {} };
 let builtin = {};
 let editIdx = -1;      // -1 = 添加
 let editing = null;    // 编辑中的原始账号副本
+let dirty = false;     // 是否有未保存更改
+let saveTimer = null;  // 自动保存防抖定时器
+
+function updateSaveState() {
+  const el = document.getElementById('saveState');
+  if (!el) return;
+  if (dirty) {
+    el.textContent = '● 有未保存更改（自动保存中…）';
+    el.style.color = 'var(--warn)';
+  } else {
+    el.textContent = '✔ 已保存到本机 accounts.json';
+    el.style.color = 'var(--success)';
+  }
+}
+function markDirty() {
+  dirty = true;
+  updateSaveState();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(autoSave, 1200);   // 停止操作 1.2s 后自动保存
+}
+async function autoSave() {
+  if (!dirty) return;
+  try {
+    await api('/api/save', payload());
+    dirty = false;
+    updateSaveState();
+    toast('✅ 已自动保存到 accounts.json');
+  } catch (e) {
+    toast('❌ 自动保存失败: ' + e.message);
+  }
+}
+window.addEventListener('beforeunload', (e) => {
+  if (dirty) { e.preventDefault(); e.returnValue = ''; }   // 有未保存更改时拦截关闭提醒
+});
 
 function mask(v) {
   if (!v) return '';
@@ -352,14 +389,16 @@ function submitForm() {
   closeForm();
   renderAccounts();
   renderProviders();
-  toast('✅ 已更新「' + name + '」（保存到 accounts.json 后才落盘）');
+  markDirty();
+  toast('✅ 已更新「' + name + '」');
 }
 function removeAccount(idx) {
   const a = state.accounts[idx];
   if (!confirm('确认删除账号「' + (a.name || '') + '」？')) return;
   state.accounts.splice(idx, 1);
   renderAccounts();
-  toast('已删除（保存后才落盘）');
+  markDirty();
+  toast('已删除');
 }
 function providerKey(url) {
   try { return new URL(url).hostname.replace(/\./g, '_'); } catch (e) { return 'custom'; }
@@ -382,7 +421,8 @@ function removePool(key, idx) {
   if (!confirm('确认删除该 OAuth 账号？')) return;
   state[key].splice(idx, 1);
   renderPools();
-  toast('已删除（保存后才落盘）');
+  markDirty();
+  toast('已删除');
 }
 function addPool(key) {
   const u = prompt('用户名:');
@@ -392,7 +432,8 @@ function addPool(key) {
   state[key] = state[key].filter(x => x.username !== u);
   state[key].push({ username: u, password: p });
   renderPools();
-  toast('已添加 ' + u + '（保存后才落盘）');
+  markDirty();
+  toast('已添加 ' + u);
 }
 
 /* ---------- 自定义站点 ---------- */
@@ -410,7 +451,8 @@ function removeProvider(idx) {
   if (!confirm('确认删除自定义站点「' + key + '」？')) return;
   delete state.providers[key];
   renderProviders();
-  toast('已删除（保存后才落盘）');
+  markDirty();
+  toast('已删除');
 }
 function addProvider() {
   const url = prompt('站点 URL:');
@@ -429,7 +471,8 @@ function addProvider() {
     api_user_key: 'new-api-user'
   };
   renderProviders();
-  toast('已添加 ' + pk + '（保存后才落盘）');
+  markDirty();
+  toast('已添加 ' + pk);
 }
 
 /* ---------- 保存 / 导出 / 同步 ---------- */
@@ -444,6 +487,9 @@ function payload() {
 async function saveAll() {
   try {
     await api('/api/save', payload());
+    dirty = false;
+    clearTimeout(saveTimer);
+    updateSaveState();
     renderAccounts();
     toast('✅ 已保存到 accounts.json');
   } catch (e) { toast('❌ ' + e.message); }
