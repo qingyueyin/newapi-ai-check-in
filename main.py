@@ -76,7 +76,6 @@ async def main():
     total_count = 0
     notification_content = []
     current_balances = {}
-    need_notify = False  # 是否需要发送通知
 
     for i, account_config in enumerate(app_config.accounts):
         account_key = f"account_{i + 1}"
@@ -95,7 +94,6 @@ async def main():
             provider_config = app_config.get_provider(account_config.provider)
             if not provider_config:
                 print(f"❌ {account_name}: Provider '{account_config.provider}' configuration not found")
-                need_notify = True
                 notification_content.append(
                     f"[FAIL] {account_name}: Provider '{account_config.provider}' configuration not found"
                 )
@@ -149,12 +147,10 @@ async def main():
 
             # 如果所有认证方式都失败，需要通知
             if not account_success and results:
-                need_notify = True
                 print(f"🔔 {account_name} all authentication methods failed, will send notification")
 
             # 如果有失败的认证方式，也通知
             if failed_methods and successful_methods:
-                need_notify = True
                 print(f"🔔 {account_name} has some failed authentication methods, will send notification")
 
             # 添加统计信息
@@ -169,7 +165,6 @@ async def main():
 
         except Exception as e:
             print(f"❌ {account_name} processing exception: {e}")
-            need_notify = True  # 异常也需要通知
             notification_content.append(f"❌ {account_name} Exception: {str(e)[:100]}...")
 
     # 每天只签到一次：保存当日记录（供下次运行跳过）
@@ -182,13 +177,9 @@ async def main():
     print(f"\n\nℹ️ Current balance hash: {current_balance_hash}, Last balance hash: {last_balance_hash}")
     if current_balance_hash:
         if last_balance_hash is None:
-            # 首次运行
-            need_notify = True
-            print("🔔 First run detected, will send notification with current balances")
+            print("🔔 First run detected")
         elif current_balance_hash != last_balance_hash:
-            # 余额有变化
-            need_notify = True
-            print("🔔 Balance changes detected, will send notification")
+            print("🔔 Balance changes detected")
         else:
             print("ℹ️ No balance changes detected")
 
@@ -196,7 +187,7 @@ async def main():
     if current_balance_hash:
         save_balance_hash(BALANCE_HASH_FILE, current_balance_hash)
 
-    if need_notify and notification_content:
+    if notification_content:
         # 构建通知内容
         summary = [
             "-------------------------------",
@@ -218,9 +209,19 @@ async def main():
 
         print(notify_content)
         notify.push_message("Check-in Alert", notify_content, msg_type="text")
-        print("🔔 Notification sent due to failures or balance changes")
+        print("🔔 Notification sent")
     else:
-        print("ℹ️ All accounts successful and no balance changes detected, notification skipped")
+        # 全部账号被 CHECK_IN_ONCE_PER_DAY 跳过时也通知，确保每次运行都有反馈
+        if skipped_count > 0:
+            notify_content = (
+                f'🕓 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
+                f"⏭️ All {skipped_count} account(s) already checked in today, skipped (CHECK_IN_ONCE_PER_DAY)"
+            )
+            print(notify_content)
+            notify.push_message("Check-in Alert", notify_content, msg_type="text")
+            print("🔔 Notification sent (all skipped)")
+        else:
+            print("ℹ️ No notification content")
 
     # 设置退出码：全部为"今天已跳过"时也算成功（不触发失败通知）
     if success_count > 0 or (skipped_count > 0 and skipped_count == len(app_config.accounts)):
