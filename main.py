@@ -140,11 +140,7 @@ async def main():
 
             if account_success:
                 current_balances[account_key] = this_account_balances
-                # 每天只签到一次：记录今天已签
-                if app_config.check_in_once_per_day:
-                    daily_records[account_name] = datetime.now().strftime("%Y-%m-%d")
-                    print(f"📝 {account_name}: Recorded check-in for today (CHECK_IN_ONCE_PER_DAY)")
-                # 每天只签到一次：记录今天已签
+                # 每天只签到一次：仅「真正签到成功」才记录今天已签，失败/异常不记（下次会重试）
                 if app_config.check_in_once_per_day:
                     from datetime import date as _today
 
