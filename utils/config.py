@@ -5,6 +5,7 @@
 
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Generator, AsyncGenerator, List, Literal
 
@@ -515,16 +516,15 @@ class AppConfig:
         try:
             data = json.loads(unified_str)
         except json.JSONDecodeError as e:
-            print(f"⚠️ Failed to parse {app_config_env}: {e}, falling back to legacy configuration")
-            return cls._load_legacy(
-                providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file, check_in_once_env
-            )
+            print(f"❌ FAILED to parse {app_config_env}: {e}")
+            print("❌ 已配置 APP_CONFIG 但内容不是合法 JSON，为防误用旧数据，本次运行直接退出。")
+            print("   👉 请检查 GitHub Secret APP_CONFIG 内容，或到 Settings → Secrets → Actions 修正后重试。")
+            sys.exit(1)
 
         if not isinstance(data, dict):
-            print(f"⚠️ {app_config_env} must be a JSON object, falling back to legacy configuration")
-            return cls._load_legacy(
-                providers_env, accounts_env, linux_do_accounts_env, github_accounts_env, proxy_env, accounts_file, check_in_once_env
-            )
+            print(f"❌ {app_config_env} must be a JSON object")
+            print("❌ 已配置 APP_CONFIG 但内容不是 JSON 对象，为防误用旧数据，本次运行直接退出。")
+            sys.exit(1)
 
         providers = cls._build_default_providers()
         providers = cls._merge_providers(providers, data.get("PROVIDERS"), app_config_env)
