@@ -168,10 +168,9 @@ tr:hover td{background:rgba(0,0,0,0.15)}
     <div class="card-title">保存与同步</div>
     <div class="row-actions">
       <button class="btn primary" onclick="saveAll()">💾 保存到 accounts.json</button>
-      <button class="btn" onclick="doExport()">📋 导出 APP_CONFIG（GitHub）</button>
       <button class="btn" onclick="doSync()">🔄 同步到 .env</button>
     </div>
-    <div class="warn-line">所有改动都会自动保存到本机 accounts.json（仅本地，不上传）。改动后点「导出 APP_CONFIG」→ 复制 → GitHub → Settings → Environments → production → 替换名为 APP_CONFIG 的 Secret 即可。</div>
+    <div class="warn-line">所有改动都会自动保存到本机 accounts.json（仅本地，不上传）。</div>
     <div class="row-actions" style="margin-top:6px;align-items:center">
       <span id="saveState" style="font-size:0.82rem;color:var(--success)">✔ 已保存到本机 accounts.json</span>
     </div>
@@ -184,13 +183,72 @@ tr:hover td{background:rgba(0,0,0,0.15)}
       <span class="warn-line" style="margin:0">写入 .env，需 sync / 导出同步到 GitHub</span>
     </div>
   </div>
-</div>
 
-<div class="modal" id="modal">
-  <div class="modal-box">
-    <div class="card-title" id="modalTitle">导出 APP_CONFIG</div>
-    <div id="modalBody"></div>
-    <div class="row-actions" id="modalActions"></div>
+  <div class="card">
+    <div class="card-title">导出到 GitHub Secrets</div>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">
+      两种方式任选：<b>方式 A</b>（推荐）只需 1 个 Secret，或 <b>方式 B</b> 分开填 4 个 Secret。
+    </p>
+    <div class="row-actions" style="margin-bottom:12px">
+      <button class="btn primary" onclick="doExport()">⚡ 生成并导出</button>
+    </div>
+
+    <div id="exportSection" style="display:none">
+      <div style="margin-bottom:16px;padding:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px">
+        <div style="font-weight:600;font-size:0.88rem;color:var(--success);margin-bottom:4px">方式 A（推荐）：统一变量 APP_CONFIG</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:8px">GitHub 只需维护 1 个 Secret，配置全部打包在这一个 JSON 里。</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <code style="font-size:0.82rem;color:var(--primary)">APP_CONFIG</code>
+          <button class="btn sm" onclick="copyExport('app_config')">📋 复制</button>
+        </div>
+        <textarea id="outAppConfig" readonly style="min-height:80px;font-size:0.78rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;width:100%;resize:vertical"></textarea>
+      </div>
+
+      <div style="padding:12px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:8px">
+        <div style="font-weight:600;font-size:0.88rem;color:var(--primary);margin-bottom:4px">方式 B：分别填写各 Secret</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px">适合只想改某一项时单独更新（旧版兼容）。</div>
+
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <code style="font-size:0.82rem">ACCOUNTS</code>
+            <button class="btn sm" onclick="copyExport('accounts')">📋 复制</button>
+          </div>
+          <textarea id="outAccounts" readonly style="min-height:60px;font-size:0.78rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;width:100%;resize:vertical" placeholder="无账号"></textarea>
+        </div>
+
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <code style="font-size:0.82rem">PROVIDERS</code>
+            <span style="font-size:0.72rem;color:var(--text-muted)">自定义站点才需要</span>
+            <button class="btn sm" onclick="copyExport('providers')">📋 复制</button>
+          </div>
+          <textarea id="outProviders" readonly style="min-height:50px;font-size:0.78rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;width:100%;resize:vertical" placeholder="无需 PROVIDERS（仅内置站点）"></textarea>
+        </div>
+
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <code style="font-size:0.82rem">ACCOUNTS_LINUX_DO</code>
+            <span style="font-size:0.72rem;color:var(--text-muted)">有 OAuth 才需要</span>
+            <button class="btn sm" onclick="copyExport('linuxdo')">📋 复制</button>
+          </div>
+          <textarea id="outLinuxdo" readonly style="min-height:40px;font-size:0.78rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;width:100%;resize:vertical" placeholder="无需 OAuth 时留空"></textarea>
+        </div>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <code style="font-size:0.82rem">ACCOUNTS_GITHUB</code>
+            <span style="font-size:0.72rem;color:var(--text-muted)">有 OAuth 才需要</span>
+            <button class="btn sm" onclick="copyExport('github')">📋 复制</button>
+          </div>
+          <textarea id="outGithub" readonly style="min-height:40px;font-size:0.78rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;width:100%;resize:vertical" placeholder="无需 OAuth 时留空"></textarea>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;font-size:0.78rem;color:var(--text-muted)">
+        📍 复制后去 GitHub → 仓库 → Settings → Environments → production → 逐个替换对应 Secret 名称即可。
+      </div>
+    </div>
+    <div id="exportStatus"></div>
   </div>
 </div>
 
@@ -502,18 +560,27 @@ function copyText(text) {
   try { document.execCommand('copy'); } catch (e) {}
   document.body.removeChild(ta);
 }
+let _exportData = null;
 async function doExport() {
   try {
     const data = await api('/api/export', payload());
-    const box = document.getElementById('modalBody');
-    box.innerHTML = '<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px">复制下面内容，替换 GitHub 里的 APP_CONFIG Secret（一个变量包含全部配置）</div>' +
-      '<textarea id="exportOut" readonly>' + esc(data.app_config) + '</textarea>';
-    document.getElementById('modalTitle').textContent = '导出 APP_CONFIG';
-    document.getElementById('modalActions').innerHTML =
-      '<button class="btn primary" onclick="copyText(document.getElementById(\'exportOut\').value);toast(\'✅ 已复制\')">📋 复制</button>' +
-      '<button class="btn" onclick="document.getElementById(\'modal\').classList.remove(\'open\')">关闭</button>';
-    document.getElementById('modal').classList.add('open');
+    _exportData = data;
+    document.getElementById('outAppConfig').value = data.app_config || '';
+    document.getElementById('outAccounts').value = data.accounts || '';
+    document.getElementById('outProviders').value = data.providers || '';
+    document.getElementById('outLinuxdo').value = data.linuxdo || '';
+    document.getElementById('outGithub').value = data.github || '';
+    document.getElementById('exportSection').style.display = '';
+    document.getElementById('exportStatus').innerHTML = '<div style="font-size:0.82rem;color:var(--success);margin-top:8px">✅ 已生成，复制对应 Secret 粘贴到 GitHub 即可</div>';
   } catch (e) { toast('❌ ' + e.message); }
+}
+function copyExport(key) {
+  if (!_exportData) { toast('⚠️ 请先点击「生成并导出」'); return; }
+  const map = { app_config: 'app_config', accounts: 'accounts', providers: 'providers', linuxdo: 'linuxdo', github: 'github' };
+  const text = _exportData[map[key]] || '';
+  if (!text) { toast('⚠️ 该 Secret 无内容，无需复制'); return; }
+  copyText(text);
+  toast('✅ 已复制 ' + key.toUpperCase());
 }
 async function doSync() {
   if (!confirm('把当前配置同步成统一变量 APP_CONFIG 写入 .env？（其他设置保留）')) return;
@@ -641,7 +708,13 @@ class Handler(BaseHTTPRequestHandler):
                     unified["PROXY"] = env["PROXY"]
                 if env.get("CHECK_IN_ONCE_PER_DAY"):
                     unified["CHECK_IN_ONCE_PER_DAY"] = env["CHECK_IN_ONCE_PER_DAY"]
-                self._send_json({"app_config": json.dumps(unified, ensure_ascii=False, separators=(",", ":"))})
+                self._send_json({
+                    "app_config": json.dumps(unified, ensure_ascii=False, separators=(",", ":")),
+                    "accounts": json.dumps(accounts, ensure_ascii=False, separators=(",", ":")) if accounts else "",
+                    "providers": json.dumps(providers, ensure_ascii=False, separators=(",", ":")) if providers else "",
+                    "linuxdo": json.dumps(linuxdo, ensure_ascii=False, separators=(",", ":")) if linuxdo else "",
+                    "github": json.dumps(github, ensure_ascii=False, separators=(",", ":")) if github else "",
+                })
             elif path == "/api/sync":
                 from manage_config import CONFIG_KEYS as _CK
                 env = read_env_config()
