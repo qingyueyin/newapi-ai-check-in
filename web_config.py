@@ -87,12 +87,13 @@ tr:hover td{background:rgba(0,0,0,0.15)}
 .pool-item .rm:hover{text-decoration:underline}
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#111827;border:1px solid var(--border);border-radius:8px;padding:10px 22px;font-size:0.85rem;opacity:0;transition:opacity .25s;pointer-events:none;z-index:99}
 .toast.show{opacity:1}
-.modal{position:fixed;inset:0;background:rgba(2,6,23,.75);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
-.modal.open{display:flex}
-.modal-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);max-width:720px;width:100%;padding:20px 24px;max-height:85vh;overflow:auto}
-.modal-box textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.8rem;min-height:160px;resize:vertical;outline:none;white-space:pre-wrap;word-break:break-all}
 .empty{color:var(--text-muted);font-size:0.82rem;padding:12px 0}
 .warn-line{font-size:0.78rem;color:var(--warn);margin-top:10px}
+.toggle-switch{display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;cursor:pointer;user-select:none;transition:all .2s;border:1px solid transparent}
+.toggle-on{background:rgba(16,185,129,.15);color:var(--success);border-color:var(--success)}
+.toggle-on:hover{background:rgba(16,185,129,.25)}
+.toggle-off{background:rgba(239,68,68,.1);color:var(--danger);border-color:var(--danger)}
+.toggle-off:hover{background:rgba(239,68,68,.2)}
 </style>
 </head>
 <body>
@@ -166,6 +167,11 @@ tr:hover td{background:rgba(0,0,0,0.15)}
 
   <div class="card">
     <div class="card-title">保存与同步</div>
+    <div class="row-actions" style="align-items:center;gap:8px;margin-bottom:8px">
+      <label style="margin:0;font-size:0.85rem;white-space:nowrap">HTTP 代理</label>
+      <input id="proxyInput" type="text" placeholder="留空不使用代理，如 http://127.0.0.1:7890"
+             style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;background:var(--bg);color:var(--text)">
+    </div>
     <div class="row-actions">
       <button class="btn primary" onclick="saveAll()">💾 保存到 accounts.json</button>
       <button class="btn" onclick="doSync()">🔄 同步到 .env</button>
@@ -342,10 +348,14 @@ function renderAccounts() {
     w.innerHTML = '<div class="empty">还没有账号，点下方「＋ 添加账号」开始。</div>';
     return;
   }
-  let html = '<table><thead><tr><th>备注名</th><th>provider</th><th>用户ID</th><th>密钥</th><th>认证</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>状态</th><th>备注名</th><th>provider</th><th>用户ID</th><th>密钥</th><th>认证</th><th></th></tr></thead><tbody>';
   state.accounts.forEach((a, i) => {
     const name = esc(a.name || '<未命名>');
+    const enabled = a.enabled !== false;
+    const toggleClass = enabled ? 'toggle-on' : 'toggle-off';
+    const toggleLabel = enabled ? 'ON' : 'OFF';
     html += '<tr>' +
+      '<td><span class="toggle-switch ' + toggleClass + '" onclick="toggleAccount(' + i + ')" title="点击切换">' + toggleLabel + '</span></td>' +
       '<td>' + name + '</td>' +
       '<td>' + esc(a.provider) + '</td>' +
       '<td>' + esc(a.api_user) + '</td>' +
@@ -413,8 +423,10 @@ function submitForm() {
     acct.api_user = uid;
     if (token !== '') acct.system_access_token = token;
     if (cookie !== '') acct.cookies = { session: cookie };
+    // 保留 enabled 状态
+    if (acct.enabled === undefined) acct.enabled = true;
   } else {
-    acct = { name, api_user: uid };
+    acct = { name, api_user: uid, enabled: true };
     if (token) acct.system_access_token = token;
     if (cookie) acct.cookies = { session: cookie };
   }
@@ -457,6 +469,13 @@ function removeAccount(idx) {
   renderAccounts();
   markDirty();
   toast('已删除');
+}
+function toggleAccount(idx) {
+  const a = state.accounts[idx];
+  a.enabled = a.enabled === false ? true : false;
+  renderAccounts();
+  markDirty();
+  toast(a.enabled ? '✅ 已启用「' + (a.name || '') + '」' : '⏸️ 已禁用「' + (a.name || '') + '」');
 }
 function providerKey(url) {
   try { return new URL(url).hostname.replace(/\./g, '_'); } catch (e) { return 'custom'; }
@@ -539,7 +558,8 @@ function payload() {
     accounts: state.accounts,
     linuxdo: state.linuxdo,
     github: state.github,
-    providers: state.providers
+    providers: state.providers,
+    proxy: (document.getElementById('proxyInput').value || '').trim()
   };
 }
 async function saveAll() {
@@ -617,6 +637,7 @@ async function init() {
     renderPools();
     renderProviders();
     loadOnceFlag();
+    if (data.proxy) document.getElementById('proxyInput').value = data.proxy;
   } catch (e) {
     document.getElementById('accountTableWrap').innerHTML =
       '<div class="empty">加载失败: ' + esc(e.message) + '</div>';
@@ -676,6 +697,7 @@ class Handler(BaseHTTPRequestHandler):
                 "providers": data.get("PROVIDERS", {}),
                 "builtin": BUILTIN_PROVIDERS,
                 "env_legacy_keys": legacy,
+                "proxy": env.get("PROXY", ""),
             })
         elif path == "/api/settings":
             self._send_json({"check_in_once_per_day": env_flag_enabled()})
@@ -704,8 +726,9 @@ class Handler(BaseHTTPRequestHandler):
                     "ACCOUNTS_GITHUB": github,
                     "PROVIDERS": providers,
                 }.items() if v}
-                if env.get("PROXY"):
-                    unified["PROXY"] = env["PROXY"]
+                proxy = body.get("proxy") or env.get("PROXY") or ""
+                if proxy:
+                    unified["PROXY"] = proxy
                 if env.get("CHECK_IN_ONCE_PER_DAY"):
                     unified["CHECK_IN_ONCE_PER_DAY"] = env["CHECK_IN_ONCE_PER_DAY"]
                 self._send_json({
@@ -725,7 +748,7 @@ class Handler(BaseHTTPRequestHandler):
                     "ACCOUNTS_GITHUB": github,
                     "PROVIDERS": providers,
                 }
-                proxy = env.get("PROXY")
+                proxy = body.get("proxy") or env.get("PROXY") or ""
                 unified = {k: v for k, v in effective.items() if v}
                 if proxy:
                     unified["PROXY"] = proxy

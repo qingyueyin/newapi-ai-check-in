@@ -16,6 +16,25 @@ from utils.get_cdk import (
     # get_b4u_cdk,
 )
 
+# 内置 provider 名称 → origin URL 映射（单一数据源）
+# manage_config.py 和 web_config.py 都从此处导入，不再各自维护
+BUILTIN_PROVIDER_ORIGINS = {
+    "anyrouter": "https://anyrouter.top",
+    "wong": "https://wzw.pp.ua",
+    "huan666": "https://ai.huan666.de",
+    "runawaytime": "https://runanytime.hxi.me",
+    "x666": "https://x666.me",
+    "kfc": "https://kfc-api.sxxe.net",
+    "muyuan": "https://muyuan.do",
+    "gpt-bjqdtd": "https://gpt.bjqdtd.com",
+    "elysiver": "https://elysiver.h-e.top",
+    "hotaru": "https://hotaruapi.com",
+    "free_lyclaude_site": "https://free.lyclaude.site",
+    "takeapi": "https://codex.661118.xyz",
+    "thatapi": "https://gyapi.zxiaoruan.cn",
+    "duckcoding": "https://duckcoding.ai",
+    "free-duckcoding": "https://free.duckcoding.ai",
+}
 
 # 前向声明 AccountConfig 类型，用于类型注解
 # 实际的 AccountConfig 类在后面定义
@@ -248,6 +267,7 @@ class AccountConfig:
     site: List["SiteAccountConfig"] | None = None
     system_access_token: dict | str = ""
     proxy: dict | None = None
+    enabled: bool = True  # 是否启用签到，禁用后跳过
     extra: dict = field(default_factory=dict)  # 存储额外的配置字段
 
     @classmethod
@@ -275,7 +295,7 @@ class AccountConfig:
         system_access_token = data.get("system_access_token", "")
         proxy = data.get("proxy")
 
-        known_keys = {"provider", "name", "cookies", "api_user", "linux.do", "github", "site", "system_access_token", "proxy"}
+        known_keys = {"provider", "name", "cookies", "api_user", "linux.do", "github", "site", "system_access_token", "proxy", "enabled"}
         extra = {k: v for k, v in data.items() if k not in known_keys}
 
         return cls(
@@ -288,6 +308,7 @@ class AccountConfig:
             github=github_accounts,
             site=site_accounts,
             proxy=proxy,
+            enabled=data.get("enabled", True),
             extra=extra,
         )
 

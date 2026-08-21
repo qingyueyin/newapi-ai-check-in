@@ -150,84 +150,6 @@ class CheckIn:
                     except Exception:
                         await page.wait_for_timeout(3000)
 
-                        # # 提取验证码相关数据
-                        # captcha_data = await page.evaluate(
-                        #     """() => {
-                        #     const data = {};
-
-                        #     // 获取 traceid
-                        #     const traceElement = document.getElementById('traceid');
-                        #     if (traceElement) {
-                        #         const text = traceElement.innerText || traceElement.textContent;
-                        #         const match = text.match(/TraceID:\\s*([a-f0-9]+)/i);
-                        #         data.traceid = match ? match[1] : null;
-                        #     }
-
-                        #     // 获取 window.aliyun_captcha 相关字段
-                        #     for (const key in window) {
-                        #         if (key.startsWith('aliyun_captcha')) {
-                        #             data[key] = window[key];
-                        #         }
-                        #     }
-
-                        #     // 获取 requestInfo
-                        #     if (window.requestInfo) {
-                        #         data.requestInfo = window.requestInfo;
-                        #     }
-
-                        #     // 获取当前 URL
-                        #     data.currentUrl = window.location.href;
-
-                        #     return data;
-                        # }"""
-                        # )
-
-                        # print(
-                        #     f"📋 {self.account_name}: Captcha data extracted: " f"\n{json.dumps(captcha_data, indent=2)}"
-                        # )
-
-                        # # 通过 WaitForSecrets 发送验证码数据并等待用户手动验证
-                        # from utils.wait_for_secrets import WaitForSecrets
-
-                        # wait_for_secrets = WaitForSecrets()
-                        # secret_obj = {
-                        #     "CAPTCHA_NEXT_URL": {
-                        #         "name": f"{self.account_name} - Aliyun Captcha Verification",
-                        #         "description": (
-                        #             f"Aliyun captcha verification required.\n"
-                        #             f"TraceID: {captcha_data.get('traceid', 'N/A')}\n"
-                        #             f"Current URL: {captcha_data.get('currentUrl', 'N/A')}\n"
-                        #             f"Please complete the captcha manually in the browser, "
-                        #             f"then provide the next URL after verification."
-                        #         ),
-                        #     }
-                        # }
-
-                        # secrets = wait_for_secrets.get(
-                        #     secret_obj,
-                        #     timeout=300,
-                        #     notification={
-                        #         "title": "阿里云验证",
-                        #         "content": "请在浏览器中完成验证，并提供下一步的 URL。\n"
-                        #         f"{json.dumps(captcha_data, indent=2)}\n"
-                        #         "📋 操作说明：https://github.com/aceHubert/newapi-ai-check-in/docs/aliyun_captcha/README.md",
-                        #     },
-                        # )
-                        # if not secrets or "CAPTCHA_NEXT_URL" not in secrets:
-                        #     print(f"❌ {self.account_name}: No next URL provided " f"for captcha verification")
-                        #     return None
-
-                        # next_url = secrets["CAPTCHA_NEXT_URL"]
-                        # print(f"🔄 {self.account_name}: Navigating to next URL " f"after captcha: {next_url}")
-
-                        # # 导航到新的 URL
-                        # await page.goto(next_url, wait_until="networkidle")
-
-                        try:
-                            await page.wait_for_function('document.readyState === "complete"', timeout=5000)
-                        except Exception:
-                            await page.wait_for_timeout(3000)
-
                         # 再次检查是否还有 traceid
                         traceid_after = None
                         try:
@@ -770,6 +692,7 @@ class CheckIn:
                 or json_data.get("code") == 0
                 or json_data.get("success")
                 or "已经签到" in message
+                or "今日已签到" in message
                 or "签到成功" in message
             ):
                 # 提取签到数据
@@ -777,7 +700,10 @@ class CheckIn:
                 checkin_date = check_in_data.get("checkin_date", "")
                 quota_awarded = check_in_data.get("quota_awarded", 0)
                 
-                if quota_awarded:
+                already_checked = "今日已签到" in message or "已经签到" in message
+                if already_checked:
+                    print(f"ℹ️ {self.account_name}: Already checked in today, skipping")
+                elif quota_awarded:
                     quota_display = round(quota_awarded / 500000, 2)
                     print(f"✅ {self.account_name}: Check-in successful! Date: {checkin_date}, Quota awarded: ${quota_display}")
                 else:
@@ -787,14 +713,32 @@ class CheckIn:
                     "success": True,
                     "message": message or "Check-in successful",
                     "data": check_in_data,
+                    "already_checked_in": already_checked,
                 }
             else:
                 error_msg = json_data.get("msg", json_data.get("message", "Unknown error"))
+                # 对常见错误提供更友好的提示
+                hints = {
+                    "请打开网站后再签到": "该站点需要先手动访问网站激活后再签到",
+                    "Turnstile token 为空": "该站点需要 Cloudflare Turnstile 验证（暂不支持自动签到）",
+                }
+                hint = hints.get(error_msg, "")
+                if hint:
+                    error_msg = f"{error_msg} — {hint}"
                 print(f"❌ {self.account_name}: Check-in failed - {error_msg}")
                 return {"success": False, "error": error_msg}
         else:
-            print(f"❌ {self.account_name}: Check-in failed - HTTP {response.status_code}")
-            return {"success": False, "error": f"HTTP {response.status_code}"}
+            status = response.status_code
+            # 提供更详细的错误描述
+            hints = {
+                403: "Cloudflare 拦截或访问被拒绝（可能需要 cf_clearance 或更换代理）",
+                429: "请求过于频繁，被限流",
+                503: "服务暂时不可用",
+            }
+            hint = hints.get(status, "")
+            error_msg = f"HTTP {status}" + (f" ({hint})" if hint else "")
+            print(f"❌ {self.account_name}: Check-in failed - {error_msg}")
+            return {"success": False, "error": error_msg}
 
     async def execute_topup(
         self,
@@ -973,6 +917,7 @@ class CheckIn:
             if self.provider_config.needs_manual_check_in():
                 # 如果配置了签到状态查询，先检查是否已签到
                 check_in_status_func = self.provider_config.get_check_in_status_func()
+                already_checked = False
                 if check_in_status_func:
                     checked_in_today = check_in_status_func(
                         provider_config=self.provider_config,
@@ -982,11 +927,14 @@ class CheckIn:
                     )
                     if checked_in_today:
                         print(f"ℹ️ {self.account_name}: Already checked in today, skipping check-in")
+                        already_checked = True
                     else:
                         # 未签到，执行签到
                         check_in_result = self.execute_check_in(session, headers, api_user)
                         if not check_in_result.get("success"):
                             return False, {"error": check_in_result.get("error", "Check-in failed")}
+                        if check_in_result.get("already_checked_in"):
+                            already_checked = True
                         # 签到成功后再次查询状态（显示最新状态）
                         check_in_status_func(
                             provider_config=self.provider_config,
@@ -999,6 +947,8 @@ class CheckIn:
                     check_in_result = self.execute_check_in(session, headers, api_user)
                     if not check_in_result.get("success"):
                         return False, {"error": check_in_result.get("error", "Check-in failed")}
+                    if check_in_result.get("already_checked_in"):
+                        already_checked = True
             else:
                 print(f"ℹ️ {self.account_name}: Check-in completed automatically (triggered by user info request)")
 
@@ -1018,6 +968,8 @@ class CheckIn:
 
             user_info = await self.get_user_info(session, headers)
             if user_info and user_info.get("success"):
+                if already_checked:
+                    user_info["already_checked_in"] = True
                 success_msg = user_info.get("display", "User info retrieved successfully")
                 print(f"✅ {self.account_name}: {success_msg}")
                 return True, user_info
@@ -1077,6 +1029,7 @@ class CheckIn:
             if self.provider_config.needs_manual_check_in():
                 # 如果配置了签到状态查询，先检查是否已签到
                 check_in_status_func = self.provider_config.get_check_in_status_func()
+                already_checked = False
                 if check_in_status_func:
                     checked_in_today = check_in_status_func(
                         provider_config=self.provider_config,
@@ -1086,11 +1039,14 @@ class CheckIn:
                     )
                     if checked_in_today:
                         print(f"ℹ️ {self.account_name}: Already checked in today, skipping check-in")
+                        already_checked = True
                     else:
                         # 未签到，执行签到
                         check_in_result = self.execute_check_in(session, headers, api_user)
                         if not check_in_result.get("success"):
                             return False, {"error": check_in_result.get("error", "Check-in failed")}
+                        if check_in_result.get("already_checked_in"):
+                            already_checked = True
                         # 签到成功后再次查询状态（显示最新状态）
                         check_in_status_func(
                             provider_config=self.provider_config,
@@ -1103,6 +1059,8 @@ class CheckIn:
                     check_in_result = self.execute_check_in(session, headers, api_user)
                     if not check_in_result.get("success"):
                         return False, {"error": check_in_result.get("error", "Check-in failed")}
+                    if check_in_result.get("already_checked_in"):
+                        already_checked = True
             else:
                 print(f"ℹ️ {self.account_name}: Check-in completed automatically (triggered by user info request)")
 
@@ -1122,6 +1080,8 @@ class CheckIn:
 
             user_info = await self.get_user_info(session, headers)
             if user_info and user_info.get("success"):
+                if already_checked:
+                    user_info["already_checked_in"] = True
                 success_msg = user_info.get("display", "User info retrieved successfully")
                 print(f"✅ {self.account_name}: {success_msg}")
                 return True, user_info

@@ -55,25 +55,14 @@ import os
 import sys
 from urllib.parse import urlparse
 
+from utils.config import BUILTIN_PROVIDER_ORIGINS as BUILTIN_PROVIDERS
+
 DATA_FILE = "accounts.json"
 ENV_FILE = ".env"
 BACKUP_FILE = "env_secrets_backup.json"
 
 CONFIG_KEYS = ("ACCOUNTS", "ACCOUNTS_LINUX_DO", "ACCOUNTS_GITHUB", "PROVIDERS")
 EXTRA_KEYS = ("CHECK_IN_ONCE_PER_DAY",)
-
-BUILTIN_PROVIDERS = {
-    "anyrouter": "https://anyrouter.top",
-    "wong": "https://wzw.pp.ua",
-    "huan666": "https://ai.huan666.de",
-    "x666": "https://x666.me",
-    "kfc": "https://kfc-api.sxxe.net",
-    "elysiver": "https://elysiver.h-e.top",
-    "hotaru": "https://hotaruapi.com",
-    "muyuan": "https://muyuan.do",
-    "takeapi": "https://codex.661118.xyz",
-    "duckcoding": "https://duckcoding.ai",
-}
 
 
 def clear_screen():

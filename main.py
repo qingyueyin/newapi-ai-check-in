@@ -87,6 +87,16 @@ async def main():
             print(f"⏭️ {account_name}: Already checked in today, skipping (CHECK_IN_ONCE_PER_DAY)")
             continue
 
+        # 启用/禁用开关
+        if not getattr(account_config, 'enabled', True):
+            skipped_count += 1
+            total_count += 1
+            print(f"⏸️ {account_name}: Account disabled, skipping")
+            if notification_content:
+                notification_content.append("\n-------------------------------")
+            notification_content.append(f"⏸️ {account_name}\n   Account disabled (skipped)")
+            continue
+
         if len(notification_content) > 0:
             notification_content.append("\n-------------------------------")
 
@@ -111,30 +121,47 @@ async def main():
             failed_methods = []
 
             this_account_balances = {}
-            # 构建详细的结果报告
-            account_result = f"📣 {account_name} Summary:\n"
+            # 构建精简的结果报告
+            account_lines = []
             for auth_method, success, user_info in results:
-                status = "✅ SUCCESS" if success else "❌ FAILED"
-                account_result += f"  {status} with {auth_method} authentication\n"
-
-                if success and user_info and user_info.get("success"):
+                if success and user_info and user_info.get("already_checked_in"):
+                    # 今日已签到
                     account_success = True
                     success_count += 1
                     successful_methods.append(auth_method)
-                    account_result += f"    💰 {user_info['display']}\n"
-                    # 记录余额信息
+                    quota = user_info.get("quota", 0) if user_info.get("success") else 0
+                    used = user_info.get("used_quota", 0) if user_info.get("success") else 0
+                    quota_str = f" | 额度: {quota:,} / 已用: {used:,}" if quota or used else ""
+                    account_lines.append(f"⏭️ {account_name} — 今日已签到{quota_str}")
+                    if user_info.get("success"):
+                        this_account_balances[auth_method] = {
+                            "quota": user_info.get("quota", 0),
+                            "used": user_info.get("used_quota", 0),
+                            "bonus": user_info.get("bonus_quota", 0),
+                        }
+                elif success and user_info and user_info.get("success"):
+                    # 签到成功
+                    account_success = True
+                    success_count += 1
+                    successful_methods.append(auth_method)
                     current_quota = user_info["quota"]
                     current_used = user_info["used_quota"]
                     current_bonus = user_info["bonus_quota"]
-                    this_account_balances[f"{auth_method}"] = {
+                    this_account_balances[auth_method] = {
                         "quota": current_quota,
                         "used": current_used,
                         "bonus": current_bonus,
                     }
+                    account_lines.append(f"✅ {account_name} — 签到成功 | 额度: {current_quota:,} / 已用: {current_used:,}")
                 else:
+                    # 失败
                     failed_methods.append(auth_method)
                     error_msg = user_info.get("error", "Unknown error") if user_info else "Unknown error"
-                    account_result += f"    🔺 {str(error_msg)}\n"
+                    account_lines.append(f"❌ {account_name} — {error_msg}")
+
+            # 合并同一账号的多行输出
+            if account_lines:
+                notification_content.append("\n".join(account_lines))
 
             if account_success:
                 current_balances[account_key] = this_account_balances
@@ -152,16 +179,6 @@ async def main():
             # 如果有失败的认证方式，也通知
             if failed_methods and successful_methods:
                 print(f"🔔 {account_name} has some failed authentication methods, will send notification")
-
-            # 添加统计信息
-            success_count_methods = len(successful_methods)
-            failed_count_methods = len(failed_methods)
-
-            account_result += f"\n📊 Statistics: {success_count_methods}/{len(results)} methods successful"
-            if failed_count_methods > 0:
-                account_result += f" ({failed_count_methods} failed)"
-
-            notification_content.append(account_result)
 
         except Exception as e:
             print(f"❌ {account_name} processing exception: {e}")
@@ -188,24 +205,28 @@ async def main():
         save_balance_hash(BALANCE_HASH_FILE, current_balance_hash)
 
     if notification_content:
-        # 构建通知内容
-        summary = [
-            "-------------------------------",
-            "📢 Check-in result statistics:",
-            f"🔵 Success: {success_count}/{total_count}",
-            f"🔴 Failed: {total_count - success_count}/{total_count}",
-        ]
+        # 构建精简通知
+        failed_count = total_count - success_count
+        summary_lines = []
+        if success_count > 0:
+            summary_lines.append(f"✅ 成功: {success_count}")
+        if failed_count > 0:
+            summary_lines.append(f"❌ 失败: {failed_count}")
+        if skipped_count > 0:
+            summary_lines.append(f"⏭️ 跳过: {skipped_count}")
+        summary = " | ".join(summary_lines)
 
         if success_count == total_count:
-            summary.append("✅ All accounts check-in successful!")
+            verdict = "🎉 全部签到成功！"
         elif success_count > 0:
-            summary.append("⚠️ Some accounts check-in successful")
+            verdict = "⚠️ 部分签到成功"
         else:
-            summary.append("❌ All accounts check-in failed")
+            verdict = "❌ 全部签到失败"
 
-        time_info = f'🕓 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+        time_info = f'🕓 {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+        header = f"{verdict}  {summary}"
 
-        notify_content = "\n\n".join([time_info, "\n".join(notification_content), "\n".join(summary)])
+        notify_content = "\n\n".join([time_info, header, "\n".join(notification_content)])
 
         print(notify_content)
         notify.push_message("Check-in Alert", notify_content, msg_type="text")
@@ -214,8 +235,8 @@ async def main():
         # 全部账号被 CHECK_IN_ONCE_PER_DAY 跳过时也通知，确保每次运行都有反馈
         if skipped_count > 0:
             notify_content = (
-                f'🕓 Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
-                f"⏭️ All {skipped_count} account(s) already checked in today, skipped (CHECK_IN_ONCE_PER_DAY)"
+                f'🕓 {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
+                f"⏭️ 全部 {skipped_count} 个账号已签过，跳过"
             )
             print(notify_content)
             notify.push_message("Check-in Alert", notify_content, msg_type="text")
