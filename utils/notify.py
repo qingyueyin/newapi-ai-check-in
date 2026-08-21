@@ -49,7 +49,7 @@ class NotificationKit:
 
 	@property
 	def telegram_chat_id(self):
-		return os.getenv('TELEGRAM_CHAT_ID')
+		return os.getenv('TELEGRAM_CHAT_ID') or os.getenv('TELEGRAMCHAT_ID')
 
 	def send_email(self, title: str, content: str, msg_type: Literal['text', 'html'] = 'text'):
 		if not self.email_user or not self.email_pass or not self.email_to:

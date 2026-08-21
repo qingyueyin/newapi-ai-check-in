@@ -7,10 +7,14 @@ Cloudflare cf_clearance cookie 获取模块
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from camoufox.async_api import AsyncCamoufox
 from playwright_captcha import CaptchaType, ClickSolver, FrameworkType
 from utils.get_headers import get_browser_headers, print_browser_headers
+
+# playwright_captcha 在每次求解失败时会打印完整 traceback，噪声过大，压到 CRITICAL 仅保留关键信息
+logging.getLogger("playwright_captcha").setLevel(logging.CRITICAL)
 
 async def get_cf_clearance(
     url: str,
@@ -66,20 +70,21 @@ async def get_cf_clearance(
             
             try:
                 print(f"ℹ️ {account_name}: Access {url} to trigger Cloudflare challenge")
-                
+
                 async with ClickSolver(
                     framework=FrameworkType.CAMOUFOX,
                     page=page,
                     max_attempts=5,
-                    attempt_delay=3
+                    attempt_delay=5
                 ) as solver:
                     await page.goto(url, wait_until="networkidle")
-                    await page.wait_for_timeout(5000)
-                    
+                    # 等待挑战页面稳定加载（Cloudflare 有时延迟渲染验证框）
+                    await page.wait_for_timeout(8000)
+
                     # 检查是否在 Cloudflare 验证页面
                     page_title = await page.title()
                     page_content = await page.content()
-                    
+
                     if "Just a moment" in page_title or "Checking your browser" in page_content:
                         print(f"ℹ️ {account_name}: Cloudflare challenge detected, auto-solving...")
                         try:
@@ -90,9 +95,21 @@ async def get_cf_clearance(
                             print(f"✅ {account_name}: Cloudflare challenge auto-solved")
                             await page.wait_for_timeout(10000)
                         except Exception as solve_err:
-                            print(f"⚠️ {account_name}: Auto-solve failed: {solve_err}, waiting for manual verification...")
-                            # 自动求解失败，回退到手动等待
-                            await wait_for_cf_clearance_manually(browser, page, account_name)
+                            # 自动求解失败：刷新页面再试一次（Cloudflare 偶尔需二次加载）
+                            print(f"⚠️ {account_name}: Auto-solve failed ({solve_err}), retrying with page reload...")
+                            try:
+                                await page.reload(wait_until="networkidle")
+                                await page.wait_for_timeout(8000)
+                                await solver.solve_captcha(
+                                    captcha_container=page,
+                                    captcha_type=CaptchaType.CLOUDFLARE_INTERSTITIAL
+                                )
+                                print(f"✅ {account_name}: Cloudflare challenge auto-solved on retry")
+                                await page.wait_for_timeout(10000)
+                            except Exception as retry_err:
+                                print(f"⚠️ {account_name}: Retry also failed ({retry_err}), waiting for background clearance...")
+                                # 自动求解失败，回退到后台等待 cf_clearance cookie
+                                await wait_for_cf_clearance_manually(browser, page, account_name)
                     else:
                         print(f"ℹ️ {account_name}: No Cloudflare challenge detected")
                         # 不需要手动操作，但需要等待后台完成 Cloudflare 验证

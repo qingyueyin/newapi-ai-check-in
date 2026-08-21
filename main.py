@@ -204,45 +204,35 @@ async def main():
     if current_balance_hash:
         save_balance_hash(BALANCE_HASH_FILE, current_balance_hash)
 
-    if notification_content:
-        # 构建精简通知
-        failed_count = total_count - success_count
-        summary_lines = []
-        if success_count > 0:
-            summary_lines.append(f"✅ 成功: {success_count}")
-        if failed_count > 0:
-            summary_lines.append(f"❌ 失败: {failed_count}")
-        if skipped_count > 0:
-            summary_lines.append(f"⏭️ 跳过: {skipped_count}")
-        summary = " | ".join(summary_lines)
+    # 构建精简通知（无论成功/失败/跳过都发送，便于排查）
+    failed_count = total_count - success_count
+    summary_lines = []
+    if success_count > 0:
+        summary_lines.append(f"✅ 成功: {success_count}")
+    if failed_count > 0:
+        summary_lines.append(f"❌ 失败: {failed_count}")
+    if skipped_count > 0:
+        summary_lines.append(f"⏭️ 跳过: {skipped_count}")
+    summary = " | ".join(summary_lines) if summary_lines else "无账号"
 
-        if success_count == total_count:
-            verdict = "🎉 全部签到成功！"
-        elif success_count > 0:
-            verdict = "⚠️ 部分签到成功"
-        else:
-            verdict = "❌ 全部签到失败"
-
-        time_info = f'🕓 {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
-        header = f"{verdict}  {summary}"
-
-        notify_content = "\n\n".join([time_info, header, "\n".join(notification_content)])
-
-        print(notify_content)
-        notify.push_message("Check-in Alert", notify_content, msg_type="text")
-        print("🔔 Notification sent")
+    if total_count > 0 and success_count == total_count:
+        verdict = "🎉 全部签到成功！"
+    elif success_count > 0:
+        verdict = "⚠️ 部分签到成功"
+    elif total_count > 0:
+        verdict = "❌ 全部签到失败"
     else:
-        # 全部账号被 CHECK_IN_ONCE_PER_DAY 跳过时也通知，确保每次运行都有反馈
-        if skipped_count > 0:
-            notify_content = (
-                f'🕓 {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
-                f"⏭️ 全部 {skipped_count} 个账号已签过，跳过"
-            )
-            print(notify_content)
-            notify.push_message("Check-in Alert", notify_content, msg_type="text")
-            print("🔔 Notification sent (all skipped)")
-        else:
-            print("ℹ️ No notification content")
+        verdict = "ℹ️ 本次无账号需要处理"
+
+    time_info = f'🕓 {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+    header = f"{verdict}  {summary}"
+
+    body = "\n".join(notification_content) if notification_content else "（无详细输出）"
+    notify_content = "\n\n".join([time_info, header, body])
+
+    print(notify_content)
+    notify.push_message("Check-in Alert", notify_content, msg_type="text")
+    print("🔔 Notification sent")
 
     # 设置退出码：全部为"今天已跳过"时也算成功（不触发失败通知）
     if success_count > 0 or (skipped_count > 0 and skipped_count == len(app_config.accounts)):
