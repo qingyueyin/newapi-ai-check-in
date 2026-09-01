@@ -114,7 +114,12 @@ class NotificationKit:
 
 		text = f'*{title}*\n{content}'
 		data = {'chat_id': self.telegram_chat_id, 'text': text, 'parse_mode': 'Markdown'}
-		curl_requests.post(f'https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage', json=data, timeout=30)
+		resp = curl_requests.post(f'https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage', json=data, timeout=30)
+		result = resp.json()
+		if not result.get('ok'):
+			error_code = result.get('error_code', '?')
+			description = result.get('description', 'Unknown error')
+			raise ValueError(f'Telegram API error {error_code}: {description}')
 
 	def push_message(self, title: str, content: str, msg_type: Literal['text', 'html'] = 'text'):
 		notifications = [
