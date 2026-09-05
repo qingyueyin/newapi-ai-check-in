@@ -4,22 +4,30 @@ CheckIn 类
 """
 
 import asyncio
-import json
-import inspect
 import hashlib
+import inspect
+import json
 import os
 import tempfile
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlencode, urlparse
 
-from curl_cffi import requests as curl_requests
 from camoufox.async_api import AsyncCamoufox
+from curl_cffi import requests as curl_requests
+
+from utils.browser_utils import (
+    aliyun_captcha_check,
+    filter_cookies,
+    get_random_user_agent,
+    parse_cookies,
+    take_screenshot,
+)
 from utils.config import AccountConfig, ProviderConfig
-from utils.browser_utils import parse_cookies, filter_cookies, get_random_user_agent, take_screenshot, aliyun_captcha_check
 from utils.get_cf_clearance import get_cf_clearance
-from utils.http_utils import proxy_resolve, response_resolve
-from utils.topup import topup
 from utils.get_headers import get_browser_headers, get_curl_cffi_impersonate, print_browser_headers
+from utils.http_utils import proxy_resolve, response_resolve
 from utils.mask_utils import mask_username
+from utils.topup import topup
+
 
 class CheckIn:
     """newapi.ai 签到管理类"""
@@ -913,11 +921,14 @@ class CheckIn:
             headers["Referer"] = self.provider_config.get_login_url()
             headers["Origin"] = self.provider_config.origin
 
+            # 自动签到站点不会走进下面的 if，必须先初始化，否则 get_user_info 成功后会 UnboundLocalError，
+            # 签到其实已经发生，却被当成失败 → CHECK_IN_ONCE_PER_DAY 不记当天 → 第二次运行再签一次
+            already_checked = False
+
             # 检查是否需要手动签到
             if self.provider_config.needs_manual_check_in():
                 # 如果配置了签到状态查询，先检查是否已签到
                 check_in_status_func = self.provider_config.get_check_in_status_func()
-                already_checked = False
                 if check_in_status_func:
                     checked_in_today = check_in_status_func(
                         provider_config=self.provider_config,
@@ -1025,11 +1036,12 @@ class CheckIn:
             headers["Referer"] = self.provider_config.get_login_url()
             headers["Origin"] = self.provider_config.origin
 
+            already_checked = False
+
             # 检查是否需要手动签到
             if self.provider_config.needs_manual_check_in():
                 # 如果配置了签到状态查询，先检查是否已签到
                 check_in_status_func = self.provider_config.get_check_in_status_func()
-                already_checked = False
                 if check_in_status_func:
                     checked_in_today = check_in_status_func(
                         provider_config=self.provider_config,
@@ -1886,6 +1898,10 @@ class CheckIn:
         site_accounts = self.account_config.site
         results = []
 
+        def auth_already_succeeded() -> bool:
+            """同一账号多种认证方式只签一次，避免 cookies + GitHub + Linux.do 连签两次。"""
+            return any(success for _, success, _ in results)
+
         # 尝试 cookies 认证
         if cookies_data:
             print(f"\nℹ️ {self.account_name}: Trying cookies authentication")
@@ -1914,7 +1930,7 @@ class CheckIn:
                 results.append(("cookies", False, {"error": str(e)}))
 
         # 尝试 system access token 认证
-        if system_access_token_data:
+        if not auth_already_succeeded() and system_access_token_data:
             print(f"\nℹ️ {self.account_name}: Trying system access token authentication")
             try:
                 api_user = self.account_config.api_user
@@ -1937,7 +1953,7 @@ class CheckIn:
                 results.append(("system_access_token", False, {"error": str(e)}))
 
         # 尝试 GitHub 认证（支持多个账号）
-        if github_accounts:
+        if not auth_already_succeeded() and github_accounts:
             for idx, github_account in enumerate(github_accounts):
                 account_label = f"github[{idx}]" if len(github_accounts) > 1 else "github"
                 print(f"\nℹ️ {self.account_name}: Trying GitHub authentication ({mask_username(github_account.username)})")
@@ -1962,7 +1978,7 @@ class CheckIn:
                     print(f"❌ {self.account_name}: GitHub authentication error ({mask_username(github_account.username)}): {e}")
                     results.append((account_label, False, {"error": str(e)}))
 
-        if site_accounts:
+        if not auth_already_succeeded() and site_accounts:
             for idx, site_account in enumerate(site_accounts):
                 account_label = f"site[{idx}]" if len(site_accounts) > 1 else "site"
                 print(f"\nℹ️ {self.account_name}: Trying site authentication ({mask_username(site_account.username)})")
@@ -1991,7 +2007,7 @@ class CheckIn:
                     results.append((account_label, False, {"error": str(e)}))
 
         # 尝试 Linux.do 认证（支持多个账号）
-        if linuxdo_accounts:
+        if not auth_already_succeeded() and linuxdo_accounts:
             for idx, linuxdo_account in enumerate(linuxdo_accounts):
                 account_label = f"linux.do[{idx}]" if len(linuxdo_accounts) > 1 else "linux.do"
                 print(f"\nℹ️ {self.account_name}: Trying Linux.do authentication ({mask_username(linuxdo_account.username)})")

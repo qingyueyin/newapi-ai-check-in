@@ -8,17 +8,14 @@ import hashlib
 import json
 import sys
 from datetime import datetime
+
 from dotenv import load_dotenv
+
+from checkin import CheckIn
+from utils import daily_checkin_status as daily_checkin
+from utils.balance_hash import load_balance_hash, save_balance_hash
 from utils.config import AppConfig
 from utils.notify import notify
-from utils.balance_hash import load_balance_hash, save_balance_hash
-from utils.daily_checkin_status import (
-    DEFAULT_FILE as DAILY_CHECKIN_FILE,
-    load_records as load_daily_records,
-    save_records as save_daily_records,
-    clean_records as clean_daily_records,
-)
-from checkin import CheckIn
 
 load_dotenv(override=True)
 
@@ -66,9 +63,10 @@ async def main():
     # 每天只签到一次开关：加载当日记录，已签过的账号跳过
     daily_records = {}
     if app_config.check_in_once_per_day:
-        daily_records = load_daily_records()
-        daily_records = clean_daily_records(daily_records)
+        daily_records = daily_checkin.clean_records(daily_checkin.load_records())
         print(f"⚙️ CHECK_IN_ONCE_PER_DAY enabled: {len(daily_records)} account(s) already checked in today")
+    else:
+        print("⚙️ CHECK_IN_ONCE_PER_DAY disabled (every run will attempt check-in)")
 
     # 为每个账号执行签到
     success_count = 0
@@ -81,8 +79,8 @@ async def main():
         account_key = f"account_{i + 1}"
         account_name = account_config.get_display_name(i)
 
-        # 每天只签到一次：今天已签过则跳过
-        if app_config.check_in_once_per_day and daily_records.get(account_name):
+        # 每天只签到一次：今天已签过则跳过（记录日期不是今天视为未签）
+        if app_config.check_in_once_per_day and daily_checkin.is_checked_in_today(daily_records, account_name):
             skipped_count += 1
             print(f"⏭️ {account_name}: Already checked in today, skipping (CHECK_IN_ONCE_PER_DAY)")
             continue
@@ -165,11 +163,10 @@ async def main():
 
             if account_success:
                 current_balances[account_key] = this_account_balances
-                # 每天只签到一次：仅「真正签到成功」才记录今天已签，失败/异常不记（下次会重试）
+                # 每天只签到一次：签到成功立刻落盘，避免后续账号异常/通知失败导致记录丢失、当天再签一次
                 if app_config.check_in_once_per_day:
-                    from datetime import date as _date
-
-                    daily_records[account_name] = _date.today().strftime("%Y-%m-%d")
+                    daily_checkin.mark_checked_in(daily_records, account_name)
+                    daily_checkin.save_records(daily_checkin.clean_records(daily_records))
                     print(f"📝 {account_name}: Recorded check-in for today (CHECK_IN_ONCE_PER_DAY)")
 
             # 如果所有认证方式都失败，需要通知
@@ -186,8 +183,8 @@ async def main():
 
     # 每天只签到一次：保存当日记录（供下次运行跳过）
     if app_config.check_in_once_per_day and daily_records:
-        cleaned = clean_daily_records(daily_records)
-        save_daily_records(cleaned)
+        cleaned = daily_checkin.clean_records(daily_records)
+        daily_checkin.save_records(cleaned)
 
     # 检查余额变化
     current_balance_hash = generate_balance_hash(current_balances) if current_balances else None

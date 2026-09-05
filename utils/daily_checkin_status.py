@@ -53,3 +53,16 @@ def clean_records(records: dict, today: str = "") -> dict:
     """清理过期记录（只保留今天），避免文件无限增长"""
     today = today or _today_str()
     return {name: date for name, date in records.items() if date == today}
+
+
+def is_checked_in_today(records: dict, account_name: str, today: str = "") -> bool:
+    """该账号今天是否已经签到成功。跨天（记录日期不是今天）视为未签到。"""
+    today = today or _today_str()
+    return records.get(account_name) == today
+
+
+def mark_checked_in(records: dict, account_name: str, today: str = "") -> dict:
+    """把账号标记为今天已签到（就地更新并返回同一 dict）。"""
+    today = today or _today_str()
+    records[account_name] = today
+    return records

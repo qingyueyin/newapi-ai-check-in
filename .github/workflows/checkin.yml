@@ -108,13 +108,21 @@ jobs:
         restore-keys: |
           balance-hash-
             
+    - name: 取北京日期（每日签到缓存按天隔离）
+      id: bj-date
+      run: |
+        $d = Get-Date -Format 'yyyy-MM-dd'
+        echo "date=$d" >> $env:GITHUB_OUTPUT
+        echo "Beijing date: $d"
+
     - name: 恢复每日签到记录缓存（CHECK_IN_ONCE_PER_DAY 用）
       uses: actions/cache/restore@v4
       with:
         path: |
           daily_checkin_records.json
-        key: daily-checkin-${{ github.run_id }}
+        key: daily-checkin-${{ runner.os }}-${{ steps.bj-date.outputs.date }}-${{ github.run_id }}
         restore-keys: |
+          daily-checkin-${{ runner.os }}-${{ steps.bj-date.outputs.date }}-
           daily-checkin-
             
     - name: 执行签到
@@ -175,12 +183,15 @@ jobs:
         key: balance-hash-${{ hashFiles('balance_hash.txt') }}
 
     - name: 保存每日签到记录缓存
-      if: hashFiles('daily_checkin_records.json') != ''
+      # 签到步骤失败（通知异常等）也必须保存，否则当天第二次运行会再签一次。
+      # hashFiles 可能忽略 gitignore 文件，导致误判「文件不存在」而跳过保存。
+      if: always()
+      continue-on-error: true
       uses: actions/cache/save@v4
       with:
         path: |
           daily_checkin_records.json
-        key: daily-checkin-${{ github.run_id }}
+        key: daily-checkin-${{ runner.os }}-${{ steps.bj-date.outputs.date }}-${{ github.run_id }}
 
     - name: 保存日志
       if: always()
