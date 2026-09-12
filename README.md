@@ -100,8 +100,7 @@ APP_CONFIG: ${{ inputs.config || secrets.APP_CONFIG }}
 
 **每天只签到一次 `CHECK_IN_ONCE_PER_DAY`（可选）**：
 
-默认 schedule 每天跑两次（0 点/8 点 UTC，北京时间 8 点/16 点），有些站每天只能签到一次，
-第二次运行会触发"反复请求"。如需每天只签到一次：
+默认 schedule 每天运行一次（UTC 00:00 = 北京时间 08:00），触发后会随机延迟 60~180 分钟再执行签到，避免固定时间被识别。如需每天只签到一次：
 
 - 方式 A：把 `CHECK_IN_ONCE_PER_DAY: true` 加入 `APP_CONFIG`（export 会自动带上）
 - 方式 B：单独添加 GitHub Secret `CHECK_IN_ONCE_PER_DAY=true`
