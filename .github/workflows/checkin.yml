@@ -1,7 +1,7 @@
 name: newapi.ai 自动签到
 on:
   schedule:
-    - cron: '0 0,8 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
       config:
@@ -38,6 +38,17 @@ jobs:
       uses: szenius/set-timezone@v2.0
       with:
         timezoneWindows: "China Standard Time"
+
+    - name: random delay (cron only)
+      if: github.event_name == 'schedule'
+      run: |
+        $seed = $(echo "${{ github.run_id }}" | Select-Object -First 7)
+        $rand = [Convert]::ToInt32($seed, 16)
+        $delayMin = ($rand % 120) + 60   # 60~179 分钟
+        echo "随机延迟 ${delayMin} 分钟 (run_id=$seed)"
+        Start-Sleep -Seconds ($delayMin * 60)
+        echo "延迟结束，北京时区时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+      shell: pwsh
 
     - uses: actions/checkout@v4
 
