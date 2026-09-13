@@ -42,12 +42,11 @@ jobs:
     - name: random delay (cron only)
       if: github.event_name == 'schedule'
       run: |
-        $seed = $(echo "${{ github.run_id }}" | Select-Object -First 7)
-        $rand = [Convert]::ToInt32($seed, 16)
-        $delayMin = ($rand % 120) + 60   # 60~179 分钟
-        echo "随机延迟 ${delayMin} 分钟 (run_id=$seed)"
+        $runId = [uint64]'${{ github.run_id }}'
+        $delayMin = [int](($runId % 120) + 60)  # 60~179 分钟
+        Write-Host "随机延迟 ${delayMin} 分钟 (run_id=$runId)"
         Start-Sleep -Seconds ($delayMin * 60)
-        echo "延迟结束，北京时区时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        Write-Host "延迟结束，北京时区时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
       shell: pwsh
 
     - uses: actions/checkout@v4
