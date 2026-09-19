@@ -202,7 +202,7 @@ async def main():
         save_balance_hash(BALANCE_HASH_FILE, current_balance_hash)
 
     # 构建精简通知（无论成功/失败/跳过都发送，便于排查）
-    failed_count = total_count - success_count
+    failed_count = total_count - success_count - skipped_count
     summary_lines = []
     if success_count > 0:
         summary_lines.append(f"✅ 成功: {success_count}")
