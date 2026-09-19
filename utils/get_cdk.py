@@ -647,6 +647,7 @@ async def get_b4u_cdk(
             url="https://tw.b4u.qzz.io/luckydraw",
             account_name=account_name,
             proxy_config=proxy_config,
+            custom_user_agent=account_config.user_agent,
         )
     except Exception as e:
         print(f"❌ {account_name}: Failed to get cf_clearance: {e}")

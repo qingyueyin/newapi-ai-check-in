@@ -113,7 +113,7 @@ def get_curl_cffi_impersonate(user_agent: str) -> str:
     return "firefox135"
 
 
-async def get_browser_headers(page) -> dict:
+async def get_browser_headers(page, custom_user_agent: str | None = None) -> dict:
     """从浏览器页面获取指纹头部信息
     
     获取 User-Agent 和 Client Hints (sec-ch-ua 系列头部)，
@@ -125,10 +125,71 @@ async def get_browser_headers(page) -> dict:
     
     Args:
         page: Playwright/Camoufox 页面对象
+        custom_user_agent: 可选的自定义 User-Agent，如果提供则使用它而不是浏览器的
         
     Returns:
         包含 User-Agent 和可能的 Client Hints 的字典
     """
+    # 如果提供了自定义 User-Agent，直接使用它并生成对应的 Client Hints
+    if custom_user_agent:
+        hints = {}
+        hints['User-Agent'] = custom_user_agent
+        
+        # 检测是否为 Firefox
+        is_firefox = 'Firefox' in custom_user_agent
+        
+        if is_firefox:
+            # Firefox 不发送 Client Hints
+            return hints
+        
+        # 解析 Chrome 版本信息
+        import re
+        chrome_match = re.search(r'Chrome/([\d.]+)', custom_user_agent)
+        if not chrome_match:
+            # 不是 Chrome/Chromium 浏览器，不发送 sec-ch-ua
+            return hints
+        
+        chrome_version = chrome_match.group(1)
+        chrome_major = chrome_version.split('.')[0]
+        
+        # 从 User-Agent 中检测平台
+        platform_name = 'Unknown'
+        platform_version = '10.0.0'
+        arch = 'x86'
+        bitness = '64'
+        is_mobile = False
+        
+        if 'Windows NT' in custom_user_agent:
+            platform_name = 'Windows'
+            platform_version = '10.0.0'
+            arch = 'x86'
+        elif 'Macintosh' in custom_user_agent or 'Mac OS X' in custom_user_agent:
+            platform_name = 'macOS'
+            platform_version = '15.0.0'
+            arch = 'arm'
+        elif 'Linux' in custom_user_agent and 'Android' not in custom_user_agent:
+            platform_name = 'Linux'
+            platform_version = '6.5.0'
+            arch = 'x86'
+        elif 'Android' in custom_user_agent:
+            platform_name = 'Android'
+            platform_version = '14.0.0'
+            is_mobile = True
+        
+        # 构建 sec-ch-ua 头部（仅 Chromium 系浏览器）
+        hints['sec-ch-ua'] = f'"Google Chrome";v="{chrome_major}", "Chromium";v="{chrome_major}", "Not A(Brand";v="24"'
+        hints['sec-ch-ua-mobile'] = '?1' if is_mobile else '?0'
+        hints['sec-ch-ua-platform'] = f'"{platform_name}"'
+        hints['sec-ch-ua-platform-version'] = f'"{platform_version}"'
+        hints['sec-ch-ua-arch'] = f'"{arch}"'
+        hints['sec-ch-ua-bitness'] = f'"{bitness}"'
+        hints['sec-ch-ua-full-version'] = f'"{chrome_version}"'
+        hints['sec-ch-ua-full-version-list'] = f'"Google Chrome";v="{chrome_version}", "Chromium";v="{chrome_version}", "Not A(Brand";v="24.0.0.0"'
+        hints['sec-ch-ua-model'] = '""'
+        
+        return hints
+    
+    # 没有自定义 UA，从浏览器获取
     browser_headers = await page.evaluate(
         """() => {
             const ua = navigator.userAgent;

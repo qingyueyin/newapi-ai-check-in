@@ -267,6 +267,7 @@ class AccountConfig:
     site: List["SiteAccountConfig"] | None = None
     system_access_token: dict | str = ""
     proxy: dict | None = None
+    user_agent: str | None = None  # 可选的 User-Agent 配置
     enabled: bool = True  # 是否启用签到，禁用后跳过
     extra: dict = field(default_factory=dict)  # 存储额外的配置字段
 
@@ -294,8 +295,9 @@ class AccountConfig:
         cookies = data.get("cookies", "")
         system_access_token = data.get("system_access_token", "")
         proxy = data.get("proxy")
+        user_agent = data.get("user_agent")
 
-        known_keys = {"provider", "name", "cookies", "api_user", "linux.do", "github", "site", "system_access_token", "proxy", "enabled"}
+        known_keys = {"provider", "name", "cookies", "api_user", "linux.do", "github", "site", "system_access_token", "proxy", "user_agent", "enabled"}
         extra = {k: v for k, v in data.items() if k not in known_keys}
 
         return cls(
@@ -308,6 +310,7 @@ class AccountConfig:
             github=github_accounts,
             site=site_accounts,
             proxy=proxy,
+            user_agent=user_agent,
             enabled=data.get("enabled", True),
             extra=extra,
         )

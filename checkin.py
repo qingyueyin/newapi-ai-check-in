@@ -1785,7 +1785,11 @@ class CheckIn:
                     await take_screenshot(page, "site_browser_login_no_user_id", self.account_name)
                     return False, {"error": "Site browser login succeeded but no user ID found"}
 
-                browser_headers = await get_browser_headers(page)
+                # 使用自定义 User-Agent（如果配置了）
+                custom_ua = self.account_config.user_agent
+                if custom_ua:
+                    print(f"ℹ️ {self.account_name}: Using custom User-Agent from config")
+                browser_headers = await get_browser_headers(page, custom_ua)
                 updated_headers = common_headers.copy()
                 if browser_headers:
                     print_browser_headers(self.account_name, browser_headers)
@@ -1824,6 +1828,7 @@ class CheckIn:
                     url=self.provider_config.get_login_url(),
                     account_name=self.account_name,
                     proxy_config=self.camoufox_proxy_config,
+                    custom_user_agent=self.account_config.user_agent,
                 )
                 
                 if cf_result[0]:

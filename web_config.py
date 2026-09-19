@@ -119,6 +119,7 @@ tr:hover td{background:rgba(0,0,0,0.15)}
       <div class="col-span-2"><label>用户 ID</label><input id="fUid" placeholder="F12 → Local Storage → user → id"></div>
       <div><label>System Access Token <span style="color:var(--text-muted)">(留空保持不变)</span></label><input id="fToken" autocomplete="off"></div>
       <div><label>Session Cookie <span style="color:var(--text-muted)">(留空保持不变)</span></label><input id="fCookie" autocomplete="off"></div>
+      <div class="col-span-2"><label>User-Agent <span style="color:var(--text-muted)">(可选，留空使用浏览器自动获取)</span></label><input id="fUserAgent" placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."></div>
       <div>
         <label>认证开关</label>
         <div style="display:flex;gap:18px;padding:8px 2px">
@@ -382,6 +383,7 @@ function openForm(idx) {
   document.getElementById('fToken').placeholder = editing && editing.system_access_token ? '已设置：' + mask(editing.system_access_token) + '（留空保持不变）' : '';
   document.getElementById('fCookie').value = '';
   document.getElementById('fCookie').placeholder = editing && editing.cookies && editing.cookies.session ? '已设置：' + mask(editing.cookies.session) + '（留空保持不变）' : '';
+  document.getElementById('fUserAgent').value = editing && editing.user_agent ? editing.user_agent : '';
   document.getElementById('fLinuxdo').checked = !!(editing && editing['linux.do']);
   document.getElementById('fGithub').checked = !!(editing && editing.github);
   const url = editing ? editing.provider : '';
@@ -412,6 +414,7 @@ function submitForm() {
   if (!uid) { toast('⚠️ 用户 ID 不能为空'); return; }
   const token = document.getElementById('fToken').value.trim();
   const cookie = document.getElementById('fCookie').value.trim();
+  const userAgent = document.getElementById('fUserAgent').value.trim();
   const linuxdo = document.getElementById('fLinuxdo').checked;
   const github = document.getElementById('fGithub').checked;
 
@@ -423,12 +426,15 @@ function submitForm() {
     acct.api_user = uid;
     if (token !== '') acct.system_access_token = token;
     if (cookie !== '') acct.cookies = { session: cookie };
+    if (userAgent !== '') acct.user_agent = userAgent;
+    else delete acct.user_agent;
     // 保留 enabled 状态
     if (acct.enabled === undefined) acct.enabled = true;
   } else {
     acct = { name, api_user: uid, enabled: true };
     if (token) acct.system_access_token = token;
     if (cookie) acct.cookies = { session: cookie };
+    if (userAgent) acct.user_agent = userAgent;
   }
   // provider 解析
   const cleaned = url.replace(/\/+$/, '');

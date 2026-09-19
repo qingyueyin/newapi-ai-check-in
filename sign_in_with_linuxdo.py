@@ -345,7 +345,11 @@ class LinuxDoSignIn:
                         # 只有当检测到 Cloudflare 验证页面时，才获取并返回浏览器指纹头部信息
                         browser_headers = None
                         if cloudflare_challenge_detected:
-                            browser_headers = await get_browser_headers(page)
+                            # 使用自定义 User-Agent（如果配置了）
+                            custom_ua = self.account_config.user_agent
+                            if custom_ua:
+                                print(f"ℹ️ {self.account_name}: Using custom User-Agent from config")
+                            browser_headers = await get_browser_headers(page, custom_ua)
                             print_browser_headers(self.account_name, browser_headers)
                             print(
                                 f"ℹ️ {self.account_name}: Browser headers returned (Cloudflare challenge was detected)"
@@ -368,7 +372,11 @@ class LinuxDoSignIn:
                             # 只有当检测到 Cloudflare 验证页面时，才获取并返回浏览器指纹头部信息
                             browser_headers = None
                             if cloudflare_challenge_detected:
-                                browser_headers = await get_browser_headers(page)
+                                # 使用自定义 User-Agent（如果配置了）
+                                custom_ua = self.account_config.user_agent
+                                if custom_ua:
+                                    print(f"ℹ️ {self.account_name}: Using custom User-Agent from config")
+                                browser_headers = await get_browser_headers(page, custom_ua)
                                 print_browser_headers(self.account_name, browser_headers)
                                 print(
                                     f"ℹ️ {self.account_name}: Browser headers returned (Cloudflare challenge was detected)"

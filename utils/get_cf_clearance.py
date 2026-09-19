@@ -20,6 +20,7 @@ async def get_cf_clearance(
     url: str,
     account_name: str,
     proxy_config: dict | None = None,
+    custom_user_agent: str | None = None,
 ) -> tuple[dict | None, dict | None]:
     """获取指定 URL 的 cf_clearance cookie
     
@@ -32,6 +33,7 @@ async def get_cf_clearance(
         url: 目标 URL，需要获取 cf_clearance 的页面地址
         account_name: 账号名称，用于日志输出
         proxy_config: 代理配置，格式为 {"server": "http://...", "username": "...", "password": "..."}
+        custom_user_agent: 可选的自定义 User-Agent
         
     Returns:
         tuple: (cf_cookies, browser_headers)
@@ -129,7 +131,9 @@ async def get_cf_clearance(
                 print(f"ℹ️ {account_name}: Got {len(cf_cookies)} Cloudflare cookies")
                 
                 # 获取浏览器指纹信息
-                browser_headers = await get_browser_headers(page)
+                if custom_user_agent:
+                    print(f"ℹ️ {account_name}: Using custom User-Agent from config")
+                browser_headers = await get_browser_headers(page, custom_user_agent)
                 print_browser_headers(account_name, browser_headers)
                 
                 # 检查是否获取到 cf_clearance cookie
