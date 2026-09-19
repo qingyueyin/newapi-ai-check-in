@@ -237,6 +237,8 @@ workflow 已配置把该文件跨 run 缓存，当天的后续运行会直接跳
       "proxy": {
         "server": "http://username:password@proxy.example.com:8080"
       },
+      // 自定义 User-Agent（可选）
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       //provider: x666 可选配置（自动通过 linux.do 登录获取）
       // "access_token": "来自 https://qd.x666.me/",  // 已废弃，会自动获取
       "get_cdk_cookies": {
@@ -268,6 +270,7 @@ workflow 已配置把该文件跨 run 缓存，当天的后续运行会直接跳
 - `name` (可选)：自定义账号显示名称，用于通知和日志中标识账号
 - `provider` (可选)：供应商，内置 `anyrouter`、`wong`、`huan666`、`x666`、`kfc`、`elysiver`、`hotaru`默认使用 `anyrouter`
 - `proxy` (可选)：单个账号代理配置，支持 `http`、`socks5` 代理
+- `user_agent` (可选)：自定义 User-Agent，用于签到请求和浏览器指纹。未配置时使用浏览器自动获取的 UA
 - `cookies`(可选)：用于身份验证的 cookies 数据
 - `system_access_token`(可选)：系统访问令牌，通过 `Authorization: Bearer <token>` 方式认证签到
 - `api_user`(cookies 或 system_access_token 设置时必需)：用于请求头的 new-api-user 参数
@@ -465,6 +468,13 @@ python3 -m camoufox fetch
 # 运行测试
 uv run pytest tests/
 ```
+
+## 文档
+
+更多详细文档请查看 [docs/](docs/) 目录：
+
+- [User-Agent 配置指南](docs/USER_AGENT_GUIDE.md) - 自定义 User-Agent 功能的完整文档
+- [文档目录](docs/README.md) - 所有文档的索引
 
 ## 免责声明
 

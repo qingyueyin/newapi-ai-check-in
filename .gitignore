@@ -25,6 +25,8 @@ linuxdo_reads
 
 # Opencode
 opencode.json
+.opencode/node_modules
+.opencode/package-lock.json
 
 # Git Worktree
 .worktree/
