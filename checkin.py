@@ -1849,14 +1849,16 @@ class CheckIn:
 
         # 生成公用请求头（只生成一次 User-Agent，整个签到流程保持一致）
         # 注意：Referer 和 Origin 不在这里设置，由各个签到方法根据实际请求动态设置
+        configured_ua = (self.account_config.user_agent or "").strip() or None
         if browser_headers:
             # 如果有浏览器指纹头部（来自 cf_clearance 获取），使用它
+            user_agent = configured_ua or browser_headers.get("User-Agent") or get_random_user_agent()
             common_headers = {
                 "Accept": "application/json, text/plain, */*",
                 "Accept-Language": "en,en-US;q=0.9,zh;q=0.8,en-CN;q=0.7,zh-CN;q=0.6",
                 "Cache-Control": "no-store",
                 "Pragma": "no-cache",
-                "User-Agent": browser_headers.get("User-Agent", get_random_user_agent()),
+                "User-Agent": user_agent,
                 "sec-fetch-dest": "empty",
                 "sec-fetch-mode": "cors",
                 "sec-fetch-site": "same-origin",
@@ -1880,20 +1882,24 @@ class CheckIn:
                 print(f"ℹ️ {self.account_name}: Using browser fingerprint headers (with Client Hints)")
             else:
                 print(f"ℹ️ {self.account_name}: Using browser fingerprint headers (Firefox, no Client Hints)")
+            if configured_ua:
+                print(f"ℹ️ {self.account_name}: Using custom User-Agent from config")
         else:
-            # 没有浏览器指纹，生成一次随机 User-Agent 并在整个流程中使用
-            random_ua = get_random_user_agent()
+            user_agent = configured_ua or get_random_user_agent()
             common_headers = {
                 "Accept": "application/json, text/plain, */*",
                 "Accept-Language": "en,en-US;q=0.9,zh;q=0.8,en-CN;q=0.7,zh-CN;q=0.6",
                 "Cache-Control": "no-store",
                 "Pragma": "no-cache",
-                "User-Agent": random_ua,
+                "User-Agent": user_agent,
                 "sec-fetch-dest": "empty",
                 "sec-fetch-mode": "cors",
                 "sec-fetch-site": "same-origin",
             }
-            print(f"ℹ️ {self.account_name}: Using random User-Agent (generated once)")
+            if configured_ua:
+                print(f"ℹ️ {self.account_name}: Using custom User-Agent from config")
+            else:
+                print(f"ℹ️ {self.account_name}: Using random User-Agent (generated once)")
 
         # 解析账号配置
         cookies_data = self.account_config.cookies
