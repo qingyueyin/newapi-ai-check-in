@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NewAPI 签到配置</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">N</span>
+    <div class="brand-text">
+      <h1>NewAPI 签到配置</h1>
+      <p id="dataFile">accounts.json</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <span id="saveState" class="save-state">已保存</span>
+    <button type="button" class="btn" id="btnExport">导出配置</button>
+    <button type="button" class="btn primary" id="btnSave">保存<kbd>Ctrl S</kbd></button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <div class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+        <input id="search" type="search" placeholder="搜索备注名 / 站点 / 用户 ID" autocomplete="off">
+      </div>
+      <div class="filter-row" id="filters">
+        <button type="button" class="chip active" data-filter="all">全部</button>
+        <button type="button" class="chip" data-filter="on">启用</button>
+        <button type="button" class="chip" data-filter="off">停用</button>
+      </div>
+    </div>
+
+    <div id="bulkBar" class="bulk-bar" hidden>
+      <span id="bulkCount">已选 0 项</span>
+      <button type="button" class="link" data-bulk="on">启用</button>
+      <button type="button" class="link" data-bulk="off">停用</button>
+      <button type="button" class="link danger" data-bulk="delete">删除</button>
+      <button type="button" class="link" data-bulk="clear">取消</button>
+    </div>
+
+    <div id="accountList" class="account-list"></div>
+    <div class="sidebar-foot">
+      <button type="button" class="btn block" id="btnNew">＋ 新建账号</button>
+    </div>
+  </aside>
+
+  <section class="content">
+    <nav class="tabs" id="tabs">
+      <button type="button" class="tab active" data-tab="account">账号详情</button>
+      <button type="button" class="tab" data-tab="pools">账号池 <span class="badge" id="poolCount">0</span></button>
+      <button type="button" class="tab" data-tab="providers">自定义站点 <span class="badge" id="providerCount">0</span></button>
+      <button type="button" class="tab" data-tab="settings">设置与导出</button>
+    </nav>
+
+    <div class="tab-panel" id="tab-account">
+      <div class="empty-state" id="accountEmpty">
+        <div class="empty-icon">←</div>
+        <h2>选择一个账号</h2>
+        <p>从左侧列表选择要编辑的账号，或新建一个。</p>
+        <button type="button" class="btn primary" id="btnNewEmpty">新建账号</button>
+      </div>
+
+      <form id="accountForm" class="form" autocomplete="off" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="editorTitle">编辑账号</h2>
+              <p class="muted" id="editorSub"></p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="fEnabled">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-label">启用签到</span>
+            </label>
+          </div>
+          <div class="grid">
+            <label class="field">
+              <span>备注名</span>
+              <input id="fName" placeholder="如：Anyrouter 主号" maxlength="60">
+            </label>
+            <label class="field">
+              <span>站点</span>
+              <select id="fProvider"></select>
+            </label>
+            <label class="field span-2" id="originWrap" hidden>
+              <span>站点 URL</span>
+              <input id="fOrigin" placeholder="https://example.com" spellcheck="false">
+              <small class="hint">不在内置列表里的站点会自动登记为自定义站点</small>
+            </label>
+            <label class="field">
+              <span>用户 ID <em>api_user</em></span>
+              <input id="fUid" placeholder="F12 → Local Storage → user → id" spellcheck="false">
+            </label>
+            <label class="field">
+              <span>User-Agent <em>可选</em></span>
+              <input id="fUserAgent" placeholder="留空则自动获取" spellcheck="false">
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>认证</h2>
+              <p class="muted">Token 和 Session 至少填一个；留空即未设置。</p>
+            </div>
+          </div>
+          <div class="secret-field">
+            <div class="secret-head">
+              <label for="fToken">System Access Token</label>
+              <span class="hint" id="tokenHint"></span>
+            </div>
+            <div class="secret-control">
+              <input id="fToken" type="text" placeholder="未设置" spellcheck="false">
+              <button type="button" class="icon-btn" data-toggle-secret="fToken">显示</button>
+              <button type="button" class="icon-btn danger" data-clear-secret="token">清除</button>
+            </div>
+          </div>
+          <div class="secret-field">
+            <div class="secret-head">
+              <label for="fCookie">Session Cookie</label>
+              <span class="hint" id="cookieHint"></span>
+            </div>
+            <div class="secret-control">
+              <input id="fCookie" type="text" placeholder="未设置" spellcheck="false">
+              <button type="button" class="icon-btn" data-toggle-secret="fCookie">显示</button>
+              <button type="button" class="icon-btn danger" data-clear-secret="cookie">清除</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>登录方式</h2>
+              <p class="muted">用 OAuth 自动登录时勾选；账号密码统一在「账号池」里维护。</p>
+            </div>
+            <button type="button" class="link" data-goto-tab="pools">管理账号池 →</button>
+          </div>
+          <div class="check-row">
+            <label class="check">
+              <input type="checkbox" id="fLinuxdo">
+              <span>使用 Linux.do 登录</span>
+              <span class="hint" id="linuxdoHint"></span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="fGithub">
+              <span>使用 GitHub 登录</span>
+              <span class="hint" id="githubHint"></span>
+            </label>
+          </div>
+
+          <div class="site-head">
+            <div>
+              <h3>站内账号密码 <em>可选</em></h3>
+              <p class="muted">部分站点需要用户名密码登录，签到时会自动使用。</p>
+            </div>
+            <button type="button" class="btn sm" id="btnAddSite">＋ 添加</button>
+          </div>
+          <div id="siteList" class="site-list"></div>
+        </section>
+
+        <section class="panel danger-panel">
+          <div>
+            <h2>删除账号</h2>
+            <p class="muted">只从本地 accounts.json 删除，不会影响已导出的 GitHub Secret。</p>
+          </div>
+          <button type="button" class="btn danger" id="btnDelete">删除这个账号</button>
+        </section>
+      </form>
+    </div>
+
+    <div class="tab-panel" id="tab-pools" hidden>
+      <div class="page-intro">
+        <div>
+          <h2>账号池</h2>
+          <p class="muted">账号详情里勾选「使用 Linux.do / GitHub 登录」后，签到时会从这里取账号。可增、可改、可删。</p>
+        </div>
+      </div>
+      <div id="poolsWrap" class="pools"></div>
+    </div>
+
+    <div class="tab-panel" id="tab-providers" hidden>
+      <div class="page-intro">
+        <div>
+          <h2>自定义站点</h2>
+          <p class="muted">不在内置列表里的站点，需要在这里配置接口路径。留空的字段使用 NewAPI 默认值。</p>
+        </div>
+        <button type="button" class="btn primary" id="btnAddProvider">＋ 添加站点</button>
+      </div>
+      <div id="providersWrap" class="providers"></div>
+    </div>
+
+    <div class="tab-panel" id="tab-settings" hidden>
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>运行选项</h2>
+            <p class="muted">写入 .env，GitHub Actions 需要导出后才生效。</p>
+          </div>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="onceCb">
+          <span>每天只签到一次</span>
+          <span class="hint">当天已签到的账号会在后续运行中跳过</span>
+        </label>
+        <label class="field">
+          <span>全局代理 <em>PROXY</em></span>
+          <input id="proxyInput" placeholder="http://127.0.0.1:7890" spellcheck="false">
+          <small class="hint">保存时写入 .env；导出配置时也会带上</small>
+        </label>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>导出到 GitHub</h2>
+            <p class="muted">复制 APP_CONFIG，粘贴到仓库 Settings → Environments → production → Secrets。</p>
+          </div>
+          <button type="button" class="btn primary" id="btnDoExport">生成配置</button>
+        </div>
+        <div id="exportWrap" class="export-wrap" hidden></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>本地文件</h2>
+            <p class="muted" id="envNote">数据保存在本地，不会上传。</p>
+          </div>
+          <button type="button" class="btn" id="btnSync">同步到 .env</button>
+        </div>
+        <p class="muted small">同步会把账号、账号池、自定义站点和代理合并成一条 <code>APP_CONFIG</code> 写入 <code>.env</code>。</p>
+      </section>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
