@@ -71,9 +71,8 @@ jobs:
           ${{ runner.os }}-uv-
 
     - name: 安装依赖
-      if: steps.uv-cache.outputs.cache-hit != 'true'
       run: |
-        echo "缓存未命中，开始安装项目依赖..."
+        echo "同步项目依赖..."
         uv sync
         echo "✅ 环境初始化完成"
 
@@ -93,12 +92,11 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-camoufox-
 
-    - name: 安装 Camoufox 浏览器
-      if: steps.camoufox-cache.outputs.cache-hit != 'true'
+    - name: 检查 Camoufox 浏览器
       run: |
-        echo "缓存未命中，开始下载 Camoufox 浏览器..."
+        echo "检查 Camoufox 浏览器是否与当前版本匹配..."
         uv run camoufox fetch
-        echo "✅ Camoufox 浏览器安装完成"
+        echo "✅ Camoufox 浏览器就绪"
 
     - name: 恢复登录状态缓存
       uses: actions/cache/restore@v4
